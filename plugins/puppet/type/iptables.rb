@@ -73,12 +73,14 @@ module Puppet
 
     newparam(:sport) do
       desc "holds value of iptables [..] --source-port parameter.
+                  If array is specified, values will be passed to multiport module.
                   Only applies to tcp/udp."
       defaultto ""
     end
 
     newparam(:dport) do
       desc "holds value of iptables [..] --destination-port parameter.
+                  If array is specified, values will be passed to multiport module.
                   Only applies to tcp/udp."
       defaultto ""
     end
@@ -168,10 +170,10 @@ module Puppet
           destination = self.matched(l.scan(/-d (\S+)/))
           destination = "0.0.0.0/0" unless destination
 
-          sport = self.matched(l.scan(/--sport (\S+)/))
+          sport = self.matched(l.scan(/--sport[s]? (\S+)/))
           sport = "" unless sport
 
-          dport = self.matched(l.scan(/--dport (\S+)/))
+          dport = self.matched(l.scan(/--dport[s]? (\S+)/))
           dport = "" unless dport
 
           iniface = self.matched(l.scan(/-i (\S+)/))
@@ -278,38 +280,13 @@ module Puppet
       end
     end
 
-    def reorder_rules()
-      table = {}
-
-      @@rules.each_key {|key|
-        table[key] = {}
-
-        @@rules[key].each {|full_rule|
-
-          rule = {}
-          # these 3 parameters seem to be sufficient for what's left to do.
-          rule["name"] = full_rule["name"]
-          rule["alt rule"] = full_rule["alt rule"]
-          rule["full rule"] = full_rule["full rule"]
-          table[key][@@ordered_rules[full_rule["name"]]] = rule
-
-          all_keys = []
-          table[key].each_key {|idx|
-            all_keys.push(idx)
-          }
-          all_keys = all_keys.sort
-
-          @@rules[key] = []
-          all_keys.each {|idx|
-            @@rules[key].push(table[key][idx])
-          }
-        }
-      }
-    end
-
     def finalize
-      # sort rules in the order imposed by defined dependencies.
-      reorder_rules()
+      # sort rules by alphabetical order, else they always arrive in a
+      # different order and puppet always runs.
+      @@rules.each_key {|key|
+        @@rules[key] = @@rules[key].sort_by {|rule| rule["name"] }
+      }
+      
       # load pre and post rules
       load_rules_from_file(@@rules, @@pre_file, :prepend)
       load_rules_from_file(@@rules, @@post_file, :append)
@@ -525,8 +502,18 @@ module Puppet
 
       if value(:dport).to_s != ""
         if ["tcp", "udp"].include?(value(:proto).to_s)
-          full_string += " --dport " + value(:dport).to_s
-          alt_string  += " --dport " + value(:dport).to_s
+          if value(:dport).class.to_s == "Array"
+            if value(:dport).length <= 15
+              full_string += " -m multiport --dports " + value(:dport).join(",")
+              alt_string += " -m multiport --dports " + value(:dport).join(",")
+            else
+              invalidrule = true
+              err("multiport module only accepts <= 15 ports. Ignoring rule.")
+            end
+          else
+            full_string += " --dport " + value(:dport).to_s
+            alt_string  += " --dport " + value(:dport).to_s
+          end
         else
           invalidrule = true
           err("--destination-port only applies to tcp/udp. Ignoring rule.")
@@ -534,8 +521,18 @@ module Puppet
       end
       if value(:sport).to_s != ""
         if ["tcp", "udp"].include?(value(:proto).to_s)
-          full_string += " --sport " + value(:sport).to_s
-          alt_string  += " --sport " + value(:sport).to_s
+          if value(:sport).class.to_s == "Array"
+            if value(:sport).length <= 15
+              full_string += " -m multiport --sports " + value(:sport).join(",")
+              alt_string += " -m multiport --sports " + value(:sport).join(",")
+            else
+              invalidrule = true
+              err("multiport module only accepts <= 15 ports. Ignoring rule.")
+            end
+          else
+            full_string += " --sport " + value(:sport).to_s
+            alt_string  += " --sport " + value(:sport).to_s
+          end
         else
           invalidrule = true
           err("--source-port only applies to tcp/udp. Ignoring rule.")
