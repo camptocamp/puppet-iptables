@@ -1,4 +1,20 @@
-This a modified copy of Dmitri Priimak's iptables type, downloaded from
+This is a modified copy of Dmitri Priimak's iptables type, downloaded from
 http://www.stanford.edu/~priimak/soft/puppet/iptables/index.html
 
-This is work in progress, probably not usable in current state.
+It's work in progress. Currently ressources are sorted by alphabetical order,
+compared with the output of iptables-save, and iptables is then executed if
+something differs.
+
+Usage:
+
+iptables { "my iptable rule":
+  proto       => "tcp",
+  dport       => "80",
+  source      => "192.168.1.10",
+  destination => "192.168.1.11",
+  jump        => "ACCEPT",
+}
+
+See modules/iptables/plugins/puppet/type/iptables.rb for the complete list of
+parameters.
+
