@@ -50,9 +50,9 @@ module Puppet
 
     newparam(:proto) do
       desc "holds value of iptables --protocol parameter.
-                  Possible values are: 'tcp', 'udp', 'icmp', 'esp', 'ah', 'vrrp', 'all'.
+                  Possible values are: 'tcp', 'udp', 'icmp', 'esp', 'ah', 'vrrp', 'igmp', 'all'.
                   Default value is 'all'"
-      newvalues(:tcp, :udp, :icmp, :esp, :ah, :vrrp, :all)
+      newvalues(:tcp, :udp, :icmp, :esp, :ah, :vrrp, :igmp, :all)
       defaultto "all"
     end
 
@@ -495,7 +495,7 @@ module Puppet
       if value(:proto).to_s != "all"
         alt_string  += " -p " + value(:proto).to_s
         full_string += " -p " + value(:proto).to_s
-        if value(:proto).to_s != "vrrp"
+        if not ["vrrp", "igmp"].include?(value(:proto).to_s)
           alt_string += " -m " + value(:proto).to_s
         end
       end
