@@ -5,12 +5,18 @@ module Puppet
 
   @@ordered_rules = {}
 
+  @@total_rule_count = 0
+
+  @@instance_count = 0
+
   @@table_counters = {
     'filter' => 1,
     'nat'    => 1,
     'mangle' => 1,
     'raw'    => 1
   }
+
+  @@finalized = false
 
   # pre and post rules are loaded from files
   # pre.iptables post.iptables in /etc/puppet/iptables
@@ -19,11 +25,6 @@ module Puppet
 
   # location where iptables binaries are to be found
   @@iptables_dir = "/sbin"
-
-  @@finalized = false
-
-  @@total_rule_count = 0
-  @@instance_count = 0
 
   newtype(:iptables) do
     @doc = "Manipulate iptables rules"
@@ -428,9 +429,9 @@ module Puppet
 
       @@ordered_rules = {}
 
-      @@total_rule_count = false
+      @@total_rule_count = 0
 
-      @@instance_count = false
+      @@instance_count = 0
 
       @@table_counters = {
         'filter' => 1,
