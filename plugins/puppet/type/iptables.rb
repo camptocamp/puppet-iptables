@@ -1,4 +1,5 @@
 module Puppet
+
   @@rules = {}
 
   @@current_rules = {}
@@ -125,6 +126,8 @@ module Puppet
       newvalues(:INVALID, :ESTABLISHED, :NEW, :RELATED)
     end
 
+    # Parse the output of iptables-save and return a hash with every parameter
+    # of each rule
     def load_current_rules(numbered = false)
       if( numbered )
         # reset table counters to 0
@@ -237,6 +240,7 @@ module Puppet
       return loaded_rules
     end
 
+    # Small helper used in load_current_rules()
     def matched(data)
       if data.instance_of?(Array)
         data.each { |s|
@@ -281,9 +285,12 @@ module Puppet
       end
     end
 
+    # finalize() gets run once every iptables resource has been declared.
+    # It decides if puppet resources differ from currently active iptables
+    # rules and applies the necessary changes.
     def finalize
-      # sort rules by alphabetical order, else they always arrive in a
-      # different order and puppet always runs.
+      # sort rules by alphabetical order, else they might arrive in a
+      # random order and cause puppet to reload iptables rules.
       @@rules.each_key {|key|
         @@rules[key] = @@rules[key].sort_by {|rule| rule["name"] }
       }
@@ -354,6 +361,8 @@ module Puppet
       end
     end
 
+    # Check if at least one rule found in iptables-save differs from what is
+    # defined in puppet resources.
     def rules_are_different
       # load current rules
       @@current_rules = self.load_current_rules(true)
@@ -422,6 +431,7 @@ module Puppet
       return super
     end
 
+    # Reset class variables to their initial value
     def self.clear
       @@rules = {}
 
