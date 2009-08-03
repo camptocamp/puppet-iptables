@@ -287,7 +287,7 @@ module Puppet
       @@rules.each_key {|key|
         @@rules[key] = @@rules[key].sort_by {|rule| rule["name"] }
       }
-      
+
       # load pre and post rules
       load_rules_from_file(@@rules, @@pre_file, :prepend)
       load_rules_from_file(@@rules, @@post_file, :append)
@@ -467,11 +467,20 @@ module Puppet
         full_string = "-A " + value(:chain).to_s
       end
 
-      if value(:source).to_s != ""
-        full_string += " -s " + value(:source).to_s
+      source = value(:source).to_s
+      if source != ""
+        full_string += " -s " + source
+        if source =~ /^\d+\.\d+\.\d+\.\d+$/
+          notice("No subnet mask defined for source \"#{source}\". Append \"/32\" if only one ip is concerned.")
+        end
       end
-      if value(:destination).to_s != ""
-        full_string += " -d " + value(:destination).to_s
+
+      destination = value(:destination).to_s
+      if destination != ""
+        full_string += " -d " + destination
+        if source =~ /^\d+\.\d+\.\d+\.\d+$/
+          notice("No subnet mask defined for destination \"#{destination}\". Append \"/32\" if only one ip is concerned.")
+        end
       end
 
       if value(:iniface).to_s != ""
