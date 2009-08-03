@@ -323,14 +323,19 @@ module Puppet
       # current rules, we add all new ones and remove all old ones.
       if self.rules_are_different
         # load new new rules
-        benchmark(:notice, "rules have changed...") do
+        benchmark(:notice, self.noop ? "rules would have changed... (noop)" : "rules have changed...") do
           # load new rules
           @@table_counters.each { |table, total_do_delete|
             rules_to_set = @@rules[table]
             if rules_to_set
               rules_to_set.each { |rule_to_set|
-                debug("Running 'iptables -t #{table} #{rule_to_set['alt rule']}'")
-                `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['alt rule']}`
+                if self.noop
+                  debug("Would have run 'iptables -t #{table} #{rule_to_set['alt rule']}' (noop)")
+                  next
+                else
+                  debug("Running 'iptables -t #{table} #{rule_to_set['alt rule']}'")
+                  `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['alt rule']}`
+                end
               }
             end
           }
@@ -340,8 +345,13 @@ module Puppet
             current_table_rules = @@current_rules[table]
             if current_table_rules
               current_table_rules.each { |rule, data|
-                debug("Running 'iptables -t #{table} -D #{data['chain']} 1'")
-                `#{@@iptables_dir}/iptables -t #{table} -D #{data['chain']} 1`
+                if self.noop
+                  debug("Would have run 'iptables -t #{table} -D #{data['chain']} 1' (noop)")
+                  next
+                else
+                  debug("Running 'iptables -t #{table} -D #{data['chain']} 1'")
+                  `#{@@iptables_dir}/iptables -t #{table} -D #{data['chain']} 1`
+                end
               }
             end
           }
@@ -411,8 +421,13 @@ module Puppet
           current_table_rules.each { |rule, data|
             if data['keep']
             else
-              debug("Running 'iptables -t #{table} #{rule.sub('-A', '-D')}'")
-              `#{@@iptables_dir}/iptables -t #{table} #{rule.sub("-A", "-D")}`
+              if self.noop
+                debug("Would have run 'iptables -t #{table} #{rule.sub('-A', '-D')}' (noop)")
+                next
+              else
+                debug("Running 'iptables -t #{table} #{rule.sub('-A', '-D')}'")
+                `#{@@iptables_dir}/iptables -t #{table} #{rule.sub("-A", "-D")}`
+              end
               deleted += 1
             end
           }
