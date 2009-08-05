@@ -1,3 +1,5 @@
+require "ipaddr"
+
 module Puppet
 
   @@rules = {}
@@ -16,6 +18,8 @@ module Puppet
     'mangle' => 1,
     'raw'    => 1
   }
+
+  @@usecidr = nil
 
   @@finalized = false
 
@@ -169,10 +173,26 @@ module Puppet
           jump = "" unless jump
 
           source = self.matched(l.scan(/-s (\S+)/))
-          source = "0.0.0.0/0" unless source
+          if source
+            ip = IpCidr.new(source)
+            if @@usecidr
+              source = ip.cidr
+            else
+              source = ip.to_s
+              source += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
+            end
+          end
 
           destination = self.matched(l.scan(/-d (\S+)/))
-          destination = "0.0.0.0/0" unless destination
+          if destination
+            ip = IpCidr.new(destination)
+            if @@usecidr
+              destination = ip.cidr
+            else
+              destination = ip.to_s
+              destination += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
+            end
+          end
 
           sport = self.matched(l.scan(/--sport[s]? (\S+)/))
           sport = "" unless sport
@@ -473,6 +493,16 @@ module Puppet
     def initialize(args)
       super(args)
 
+      if @@usecidr == nil
+        iptablesversion = `#{@@iptables_dir}/iptables --version`.scan(/ v([0-9\.]+)/)
+        iptablesversion = iptablesversion[0][0].split(".")
+        if iptablesversion[0].to_i < 2 and iptablesversion[1].to_i < 4
+          @@usecidr = false
+        else
+          @@usecidr = true
+        end
+      end
+
       invalidrule = false
       @@total_rule_count += 1
 
@@ -494,18 +524,26 @@ module Puppet
 
       source = value(:source).to_s
       if source != ""
-        full_string += " -s " + source
-        if source =~ /^\d+\.\d+\.\d+\.\d+$/
-          notice("No subnet mask defined for source \"#{source}\". Append \"/32\" if only one ip is concerned.")
+        ip = IpCidr.new(source)
+        if @@usecidr
+          source = ip.cidr
+        else
+          source = ip.to_s
+          source += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
         end
+        full_string += " -s " + source
       end
 
       destination = value(:destination).to_s
       if destination != ""
-        full_string += " -d " + destination
-        if source =~ /^\d+\.\d+\.\d+\.\d+$/
-          notice("No subnet mask defined for destination \"#{destination}\". Append \"/32\" if only one ip is concerned.")
+        ip = IpCidr.new(destination)
+        if @@usecidr
+          destination = ip.cidr
+        else
+          destination = ip.to_s
+          destination += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
         end
+        full_string += " -d " + destination
       end
 
       if value(:iniface).to_s != ""
@@ -647,4 +685,33 @@ module Puppet
       end
     end
   end
+end
+
+# This class is a lame copy of:
+# http://article.gmane.org/gmane.comp.lang.ruby.core/10013/
+
+class IpCidr < IPAddr
+
+  def netmask
+    _to_string(@mask_addr)
+  end
+
+  def prefixlen
+    m = case @family
+    when Socket::AF_INET
+      IN4MASK
+    when Socket::AF_INET6
+      IN6MASK
+    else
+      raise "unsupported address family"
+    end
+    return $1.length if /\A(1*)(0*)\z/ =~ (@mask_addr & m).to_s(2)
+    raise "bad addr_mask format"
+  end
+
+  def cidr
+    cidr = sprintf("%s/%s", self.to_s, self.prefixlen)
+    cidr
+  end
+
 end
