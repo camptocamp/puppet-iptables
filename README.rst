@@ -68,7 +68,8 @@ Example::
   }
 
   exec { "save iptables rules":
-    command => "/etc/init.d/iptables save",
+    command     => "/etc/init.d/iptables save",
+    refreshonly => true,
   }
 
   file { "/etc/puppet/iptables/pre.iptables":
