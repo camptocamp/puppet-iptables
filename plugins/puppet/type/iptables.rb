@@ -140,6 +140,18 @@ module Puppet
       newvalues(:INVALID, :ESTABLISHED, :NEW, :RELATED)
     end
 
+    newparam(:limit) do
+      desc "value for iptables '-m limit --limit' parameter.
+                  Example falues are: '50/second', '40', '10/day'."
+      defaultto ""
+    end
+
+    newparam(:burst) do
+      desc "value for '--limit-burst' parameter.
+                  Example values are: '5', '10'."
+      defaultto ""
+    end
+
     # Parse the output of iptables-save and return a hash with every parameter
     # of each rule
     def load_current_rules(numbered = false)
@@ -234,6 +246,12 @@ module Puppet
           state = self.matched(l.scan(/--state (\S+)/))
           state = "" unless state
 
+          limit = self.matched(l.scan(/--limit (\S+)/))
+          limit = "" unless limit
+
+          burst = self.matched(l.scan(/--limit-burst (\S+)/))
+          burst = "" unless burst
+
           data = {
             'chain'      => chain,
             'table'      => table,
@@ -250,7 +268,9 @@ module Puppet
             'log_level'  => log_level,
             'log_prefix' => log_prefix,
             'icmp'       => icmp,
-            'state'      => state
+            'state'      => state,
+            'limit'      => limit,
+            'burst'      => burst
           }
 
           if( numbered )
@@ -637,6 +657,16 @@ module Puppet
         alt_string += " -m state --state " + value(:state).to_s
       end
 
+      if value(:limit).to_s != ""
+        full_string += " -m limit --limit " + value(:limit).to_s
+        alt_string += " -m limit --limit " + value(:limit).to_s
+      end
+
+      if value(:burst).to_s != ""
+        full_string += " --limit-burst " + value(:burst).to_s
+        alt_string += " --limit-burst " + value(:burst).to_s
+      end
+
       full_string += " -j " + value(:jump).to_s
       alt_string += " -j " + value(:jump).to_s
 
@@ -692,6 +722,8 @@ module Puppet
                  'log_prefix'    => value(:log_prefix).to_s,
                  'icmp'          => value(:icmp).to_s,
                  'state'         => value(:state).to_s,
+                 'limit'         => value(:limit).to_s,
+                 'burst'         => value(:burst).to_s,
                  'chain_prio'    => chain_prio.to_s,
                  'full rule'     => full_string,
                  'alt rule'      => alt_string})
