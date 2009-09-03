@@ -142,7 +142,7 @@ module Puppet
 
     newparam(:limit) do
       desc "value for iptables '-m limit --limit' parameter.
-                  Example falues are: '50/second', '40', '10/day'."
+                  Example values are: '50/sec', '40/min', '30/hour', '10/day'."
       defaultto ""
     end
 
@@ -658,13 +658,36 @@ module Puppet
       end
 
       if value(:limit).to_s != ""
-        full_string += " -m limit --limit " + value(:limit).to_s
-        alt_string += " -m limit --limit " + value(:limit).to_s
+        limit_value = value(:limit).to_s
+        if not limit_value.include? "/"
+          invalidrule = true
+          err("Please append a valid suffix (sec/min/hour/day) to the value passed to 'limit'. Ignoring rule.")
+        else
+          limit_value = limit_value.split("/")
+          if limit_value[0] !~ /^[0-9]+$/
+            invalidrule = true
+            err("'limit' values must be numeric. Ignoring rule.")
+          elsif ["sec", "min", "hour", "day"].include? limit_value[1]
+            full_string += " -m limit --limit " + value(:limit).to_s
+            alt_string += " -m limit --limit " + value(:limit).to_s
+          else
+            invalidrule = true
+            err("Please use only sec/min/hour/day suffixes with 'limit'. Ignoring rule.")
+          end
+        end
       end
 
       if value(:burst).to_s != ""
-        full_string += " --limit-burst " + value(:burst).to_s
-        alt_string += " --limit-burst " + value(:burst).to_s
+        if value(:limit).to_s == ""
+          invalidrule = true
+          err("'burst' makes no sense without 'limit'. Ignoring rule.")
+        elsif value(:burst).to_s !~ /^[0-9]+$/
+          invalidrule = true
+          err("'burst' accepts only numeric values. Ignoring rule.")
+        else
+          full_string += " --limit-burst " + value(:burst).to_s
+          alt_string += " --limit-burst " + value(:burst).to_s
+        end
       end
 
       full_string += " -j " + value(:jump).to_s
