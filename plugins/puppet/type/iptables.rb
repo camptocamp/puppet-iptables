@@ -539,6 +539,8 @@ module Puppet
       table = value(:table).to_s
       @@rules[table] = [] unless @@rules[table]
 
+      full_string = ""
+
       if value(:table).to_s == "filter" and ["PREROUTING", "POSTROUTING"].include?(value(:chain).to_s)
         invalidrule = true
         err("PREROUTING and POSTROUTING cannot be used in table 'filter'. Ignoring rule.")
@@ -549,7 +551,7 @@ module Puppet
         invalidrule = true
         err("INPUT, FORWARD and POSTROUTING cannot be used in table 'raw'. Ignoring rule.")
       else
-        full_string = "-A " + value(:chain).to_s
+        full_string += "-A " + value(:chain).to_s
       end
 
       source = value(:source).to_s
