@@ -31,6 +31,16 @@ module Puppet
   # location where iptables binaries are to be found
   @@iptables_dir = "/sbin"
 
+  # order in which the differents chains appear in iptables-save's output. Used
+  # to sort the rules the same way iptables-save does.
+  @@chain_order = {
+    'PREROUTING'  => 1,
+    'INPUT'       => 2,
+    'FORWARD'     => 3,
+    'OUTPUT'      => 4,
+    'POSTROUTING' => 5,
+  }
+
   newtype(:iptables) do
     @doc = "Manipulate iptables rules"
 
@@ -309,10 +319,10 @@ module Puppet
     # It decides if puppet resources differ from currently active iptables
     # rules and applies the necessary changes.
     def finalize
-      # sort rules by alphabetical order, else they might arrive in a
+      # sort rules by alphabetical order, grouped by chain, else they arrive in
       # random order and cause puppet to reload iptables rules.
       @@rules.each_key {|key|
-        @@rules[key] = @@rules[key].sort_by {|rule| rule["name"] }
+        @@rules[key] = @@rules[key].sort_by {|rule| [rule["chain_prio"], rule["name"]] }
       }
 
       # load pre and post rules
@@ -659,6 +669,8 @@ module Puppet
         end
       end
 
+      chain_prio = @@chain_order[value(:chain).to_s]
+
       debug("iptables param: #{full_string}")
 
       if invalidrule != true
@@ -680,6 +692,7 @@ module Puppet
                  'log_prefix'    => value(:log_prefix).to_s,
                  'icmp'          => value(:icmp).to_s,
                  'state'         => value(:state).to_s,
+                 'chain_prio'    => chain_prio.to_s,
                  'full rule'     => full_string,
                  'alt rule'      => alt_string})
       end
