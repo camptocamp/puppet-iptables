@@ -653,10 +653,16 @@ module Puppet
         end
       end
 
+      # let's specify the order of the states as iptables uses them
+      state_order = ["INVALID", "NEW", "RELATED", "ESTABLISHED"]
       if value(:state).class.to_s == "Array"
-        if value(:state).length <= 4
-          # let's specify the order of the states as iptables uses them
-          state_order = ["INVALID", "NEW", "RELATED", "ESTABLISHED"]
+
+        invalid_state = false
+        value(:state).each {|v|
+          invalid_state = true unless state_order.include?(v)
+        }
+
+        if value(:state).length <= state_order.length and not invalid_state
 
           # return only the elements that appear in both arrays.
           # This filters out bad entries (unfortunately silently), and orders the entries
@@ -667,11 +673,16 @@ module Puppet
           alt_string  += " -m state --state " + states.join(",")
         else
           invalidrule = true
-          err("state only accepts any of the 4 states INVALID, NEW, RELATED, or ESTABLISHED. Ignoring rule.")
+          err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
         end
       elsif value(:state).to_s != ""
-        full_string += " -m state --state " + value(:state).to_s
-        alt_string  += " -m state --state " + value(:state).to_s
+        if state_order.include?(value(:state))
+          full_string += " -m state --state " + value(:state).to_s
+          alt_string  += " -m state --state " + value(:state).to_s
+        else
+          invalidrule = true
+          err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
+        end
       end
 
       if value(:limit).to_s != ""
