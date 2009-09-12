@@ -137,7 +137,6 @@ module Puppet
     newparam(:state) do
       desc "value for iptables '-m state --state' parameter.
                   Possible values are: 'INVALID', 'ESTABLISHED', 'NEW', 'RELATED'."
-      newvalues(:INVALID, :ESTABLISHED, :NEW, :RELATED)
     end
 
     newparam(:limit) do
@@ -654,9 +653,25 @@ module Puppet
         end
       end
 
-      if value(:state).to_s != ""
+      if value(:state).class.to_s == "Array"
+        if value(:state).length <= 4
+          # let's specify the order of the states as iptables uses them
+          state_order = ["INVALID", "NEW", "RELATED", "ESTABLISHED"]
+
+          # return only the elements that appear in both arrays.
+          # This filters out bad entries (unfortunately silently), and orders the entries
+          # in the same order as the 'state_order' array
+          states = state_order & value(:state)
+
+          full_string += " -m state --state " + states.join(",")
+          alt_string  += " -m state --state " + states.join(",")
+        else
+          invalidrule = true
+          err("state only accepts any of the 4 states INVALID, NEW, RELATED, or ESTABLISHED. Ignoring rule.")
+        end
+      elsif value(:state).to_s != ""
         full_string += " -m state --state " + value(:state).to_s
-        alt_string += " -m state --state " + value(:state).to_s
+        alt_string  += " -m state --state " + value(:state).to_s
       end
 
       if value(:limit).to_s != ""
