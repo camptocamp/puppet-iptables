@@ -74,8 +74,8 @@ module Puppet
 
     newparam(:jump) do
       desc "holds value of iptables --jump target
-                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'LOG'."
-      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :LOG)
+                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'LOG', 'MASQUERADE'."
+      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :LOG, :MASQUERADE)
       defaultto "DROP"
     end
 
@@ -747,6 +747,11 @@ module Puppet
           log_prefix = "\"" + value(:log_prefix).to_s[0,27] + ": \""
           full_string += " --log-prefix " + log_prefix
           alt_string += " --log-prefix " + log_prefix
+        end
+      elsif value(:jump).to_s == "MASQUERADE"
+        if value(:table).to_s != "nat"
+          invalidrule = true
+          err("MASQUERADE only applies to table 'nat'.")
         end
       end
 
