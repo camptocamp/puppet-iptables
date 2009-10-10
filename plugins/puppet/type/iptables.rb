@@ -74,8 +74,8 @@ module Puppet
 
     newparam(:jump) do
       desc "holds value of iptables --jump target
-                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'LOG', 'MASQUERADE'."
-      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :LOG, :MASQUERADE)
+                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'LOG', 'MASQUERADE', 'REDIRECT'."
+      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :LOG, :MASQUERADE, :REDIRECT)
       defaultto "DROP"
     end
 
@@ -148,6 +148,11 @@ module Puppet
     newparam(:burst) do
       desc "value for '--limit-burst' parameter.
                   Example values are: '5', '10'."
+      defaultto ""
+    end
+
+    newparam(:redirect) do
+      desc "value for iptables '-j REDIRECT --to-ports' parameter."
       defaultto ""
     end
 
@@ -251,6 +256,9 @@ module Puppet
           burst = self.matched(l.scan(/--limit-burst (\S+)/))
           burst = "" unless burst
 
+          redirect = self.matched(l.scan(/--to-ports (\S+)/))
+          redirect = "" unless redirect
+
           data = {
             'chain'      => chain,
             'table'      => table,
@@ -269,7 +277,8 @@ module Puppet
             'icmp'       => icmp,
             'state'      => state,
             'limit'      => limit,
-            'burst'      => burst
+            'burst'      => burst,
+            'redirect'   => redirect,
           }
 
           if( numbered )
@@ -753,6 +762,11 @@ module Puppet
           invalidrule = true
           err("MASQUERADE only applies to table 'nat'.")
         end
+      elsif value(:jump).to_s == "REDIRECT"
+        if value(:redirect).to_s != ""
+          full_string += " --to-ports " + value(:redirect).to_s
+          alt_string += " --to-ports " + value(:redirect).to_s
+        end
       end
 
       chain_prio = @@chain_order[value(:chain).to_s]
@@ -774,6 +788,7 @@ module Puppet
                  'outiface'      => value(:outiface).to_s,
                  'todest'        => value(:todest).to_s,
                  'reject'        => value(:reject).to_s,
+                 'redirect'      => value(:redirect).to_s,
                  'log_level'     => value(:log_level).to_s,
                  'log_prefix'    => value(:log_prefix).to_s,
                  'icmp'          => value(:icmp).to_s,
