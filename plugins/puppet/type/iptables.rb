@@ -74,8 +74,8 @@ module Puppet
 
     newparam(:jump) do
       desc "holds value of iptables --jump target
-                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'LOG', 'MASQUERADE', 'REDIRECT'."
-      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :LOG, :MASQUERADE, :REDIRECT)
+                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'SNAT', 'LOG', 'MASQUERADE', 'REDIRECT'."
+      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :SNAT, :LOG, :MASQUERADE, :REDIRECT)
       defaultto "DROP"
     end
 
@@ -109,8 +109,18 @@ module Puppet
       desc "value for iptables --out-interface parameter"
     end
 
+    newparam(:tosource) do
+      desc "value for iptables '-j SNAT --to-source' parameter"
+      defaultto ""
+    end
+
     newparam(:todest) do
       desc "value for iptables '-j DNAT --to-destination' parameter"
+      defaultto ""
+    end
+
+    newparam(:toports) do
+      desc "value for iptables '-j REDIRECT --to-ports' parameter"
       defaultto ""
     end
 
@@ -137,6 +147,7 @@ module Puppet
     newparam(:state) do
       desc "value for iptables '-m state --state' parameter.
                   Possible values are: 'INVALID', 'ESTABLISHED', 'NEW', 'RELATED'."
+      newvalues(:INVALID, :ESTABLISHED, :NEW, :RELATED)
     end
 
     newparam(:limit) do
@@ -187,6 +198,7 @@ module Puppet
 
         elsif /^-A/.match(l)
           # matched rule
+					debug("analyzing rule: #{l}")
           chain = self.matched(l.scan(/^-A (\S+)/))
 
           table = self.matched(l.scan(/-t (\S+)/))
@@ -235,6 +247,12 @@ module Puppet
           todest = self.matched(l.scan(/--to-destination (\S+)/))
           todest = "" unless todest
 
+          tosource = self.matched(l.scan(/--to-source (\S+)/))
+          tosource = "" unless tosource
+
+          toports = self.matched(l.scan(/--to-ports (\S+)/))
+          toports = "" unless toports
+
           reject = self.matched(l.scan(/--reject-with (\S+)/))
           reject = "" unless reject
 
@@ -249,6 +267,8 @@ module Puppet
 
           state = self.matched(l.scan(/--state (\S+)/))
           state = "" unless state
+
+          name = self.matched(l.scan(/--comment (\S+)/))
 
           limit = self.matched(l.scan(/--limit (\S+)/))
           limit = "" unless limit
@@ -271,6 +291,8 @@ module Puppet
             'iniface'    => iniface,
             'outiface'   => outiface,
             'todest'     => todest,
+            'tosource'   => tosource,
+            'toports'    => toports,
             'reject'     => reject,
             'log_level'  => log_level,
             'log_prefix' => log_prefix,
@@ -279,9 +301,11 @@ module Puppet
             'limit'      => limit,
             'burst'      => burst,
             'redirect'   => redirect,
+            'name'       => name
           }
 
           if( numbered )
+						debug("Adding: #{counter.to_s} #{l.strip}")
             table_rules[counter.to_s + " " +l.strip] = data
 
             # we also set table counters to indicate amount
@@ -289,6 +313,7 @@ module Puppet
             # we decide to refresh them
             @@table_counters[table] += 1
           else
+						debug("Adding: #{l.strip}")
             table_rules[l.strip] = data
           end
 
@@ -413,6 +438,9 @@ module Puppet
               }
             end
           }
+          # Run iptables save to persist rules
+          debug("Running service iptables save")
+          `/sbin/service iptables save`
         end
 
         @@rules = {}
@@ -439,8 +467,10 @@ module Puppet
         rules_to_set = @@rules[table]
         current_table_rules = @@current_rules[table]
         current_table_rules = {} unless current_table_rules
+        debug("Current tables rules #{current_table_rules}")
         if rules_to_set
           rules_to_set.each { |rule_to_set|
+						debug("Looking for: #{rule_to_set['numbered rule']} or #{rule_to_set['altned rule']}")
             return true unless current_table_rules[rule_to_set['numbered rule']] or current_table_rules[rule_to_set['altned rule']]
           }
         end
@@ -694,6 +724,11 @@ module Puppet
         end
       end
 
+      if value(:name).to_s != ""
+        full_string += " -m comment --comment \"" + value(:name).to_s + "\""
+        alt_string += " -m comment --comment \"" + value(:name).to_s + "\""
+      end
+
       if value(:limit).to_s != ""
         limit_value = value(:limit).to_s
         if not limit_value.include? "/"
@@ -741,6 +776,25 @@ module Puppet
           full_string += " --to-destination " + value(:todest).to_s
           alt_string += " --to-destination " + value(:todest).to_s
         end
+      elsif value(:jump).to_s == "SNAT"
+        if value(:table).to_s != "nat"
+          invalidrule = true
+          err("SNAT only applies to table 'nat'.")
+        elsif value(:tosource).to_s == ""
+          invalidrule = true
+          err("SNAT missing mandatory 'tosource' parameter.")
+        else
+          full_string += " --to-source " + value(:tosource).to_s
+          alt_string += " --to-source " + value(:tosource).to_s
+        end
+      elsif value(:jump).to_s == "REDIRECT"
+        if value(:toports).to_s == ""
+          invalidrule = true
+          err("REDIRECT missing mandatory 'toports' parameter.")
+        else
+          full_string += " --to-ports " + value(:toports).to_s
+          alt_string += " --to-ports " + value(:toports).to_s
+        end
       elsif value(:jump).to_s == "REJECT"
         if value(:reject).to_s != ""
           full_string += " --reject-with " + value(:reject).to_s
@@ -787,6 +841,8 @@ module Puppet
                  'iniface'       => value(:iniface).to_s,
                  'outiface'      => value(:outiface).to_s,
                  'todest'        => value(:todest).to_s,
+                 'tosource'      => value(:tosource).to_s,
+                 'toports'       => value(:toports).to_s,
                  'reject'        => value(:reject).to_s,
                  'redirect'      => value(:redirect).to_s,
                  'log_level'     => value(:log_level).to_s,
