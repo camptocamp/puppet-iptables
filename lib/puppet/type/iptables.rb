@@ -440,7 +440,7 @@ module Puppet
           }
           # Run iptables save to persist rules
           debug("Running service iptables save")
-          `/sbin/service iptables save`
+          `/sbin/iptables-save > /etc/iptables.rules`
         end
 
         @@rules = {}
