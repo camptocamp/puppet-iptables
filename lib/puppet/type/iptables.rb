@@ -715,7 +715,7 @@ module Puppet
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
         end
       elsif value(:state).to_s != ""
-        if state_order.include?(value(:state))
+        if state_order.include?(value(:state).to_s)
           full_string += " -m state --state " + value(:state).to_s
           alt_string  += " -m state --state " + value(:state).to_s
         else
