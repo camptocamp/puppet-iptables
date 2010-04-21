@@ -14,6 +14,13 @@ for puppet.
 
 .. _`shorewall module`: http://github.com/camptocamp/puppet-shorewall/tree
 
+It was forked by kbarber, at http://github.com/kbarber/puppet-iptables
+to support saving the iptables rules.
+
+It was then forked by seph, at
+http://github.com/directionless/puppet-iptables to fix a small bug,
+and support debian.
+
 Introduction
 ------------
 
@@ -44,11 +51,6 @@ Usage
 
 Example::
 
-  Iptables {
-    before => Exec["save iptables rules"],
-    notify => Exec["save iptables rules"],
-  }
-
   iptables { "001 allow icmp":
     proto => "icmp",
     icmp  => "any",
@@ -67,10 +69,6 @@ Example::
     jump        => "DROP",
   }
 
-  exec { "save iptables rules":
-    command     => "/etc/init.d/iptables save",
-    refreshonly => true,
-  }
 
   file { "/etc/puppet/iptables/pre.iptables":
     content => "-A INPUT -s 10.0.0.1 -p tcp -m tcp --dport 22 -j ACCEPT",
@@ -91,7 +89,6 @@ This will run the following commands, in this exact order::
   iptables -t filter -A INPUT -s 192.168.0.0/16 -d 192.168.1.11/32 -p tcp --dport 80 -j ACCEPT
   iptables -t filter -A INPUT -p tcp --dport 80 -j DROP
   iptables -t filter -A INPUT -j REJECT --reject-with icmp-port-unreachable
-  /etc/init.d/iptables save
 
 Reference
 ---------
