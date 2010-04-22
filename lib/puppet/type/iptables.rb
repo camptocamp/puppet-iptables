@@ -444,8 +444,8 @@ module Puppet
                         when /(Ubuntu|Debian)/ then "/sbin/iptables-save > /etc/iptables.rules"
                         else nil
                         end
-          debug("Saving with: #{persist_cmd}")
-          `#{persist_cmd}`
+          debug("Saving iptables with: #{persist_cmd}")
+          system(persist_cmd)
         end
 
         @@rules = {}
