@@ -440,9 +440,9 @@ module Puppet
           }
           # Run iptables save to persist rules. The behaviour is to do nothing
           # if we no nothing of the operating system.
-          persist_cmd = case Facter.value(:operatingsystem)
-                        when /(Fedora|Redhat|Centos)/ then "/sbin/service iptables save"
-                        when /(Ubuntu|Debian)/ then "/sbin/iptables-save > /etc/iptables.rules"
+          persist_cmd = case Facter.value(:operatingsystem).downcase
+                        when /(fedora|redhat|centos)/ then "/sbin/service iptables save"
+                        when /(ubuntu|debian)/ then "/sbin/iptables-save > /etc/iptables.rules"
                         else nil
                         end
           debug("Saving iptables with: #{persist_cmd}")
