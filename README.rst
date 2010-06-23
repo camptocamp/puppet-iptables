@@ -2,24 +2,12 @@
 Puppet iptables type
 ====================
 
-This is a copy of Dmitri Priimak's "iptables type" (downloaded from
-http://www.stanford.edu/~priimak/soft/puppet/iptables/index.html), and modified
-for my needs. It is work in progress and certainly has some bugs. Feedback
-welcome !
-
 This is a simple wrapper around the "iptables" command used on Linux. It is
 ment to be used to define half a dozen rule on the host running puppet. For
 more serious needs, you might want to have a look at this `shorewall module`_
 for puppet.
 
 .. _`shorewall module`: http://github.com/camptocamp/puppet-shorewall/tree
-
-It was forked by kbarber, at http://github.com/kbarber/puppet-iptables
-to support saving the iptables rules.
-
-It was then forked by seph, at
-http://github.com/directionless/puppet-iptables to fix a small bug,
-and support debian.
 
 Introduction
 ------------
@@ -93,7 +81,7 @@ This will run the following commands, in this exact order::
 Reference
 ---------
 
-Have a look at plugins/puppet/type/iptables.rb for the complete list of
+Have a look at lib/puppet/type/iptables.rb for the complete list of
 parameters.
 
 

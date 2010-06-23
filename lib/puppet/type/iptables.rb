@@ -67,16 +67,18 @@ module Puppet
     newparam(:proto) do
       desc "holds value of iptables --protocol parameter.
                   Possible values are: 'tcp', 'udp', 'icmp', 'esp', 'ah', 'vrrp', 'igmp', 'all'.
-                  Default value is 'all'"
+                  Default value is 'tcp'"
       newvalues(:tcp, :udp, :icmp, :esp, :ah, :vrrp, :igmp, :all)
-      defaultto "all"
+      defaultto "tcp"
     end
 
     newparam(:jump) do
       desc "holds value of iptables --jump target
-                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'SNAT', 'LOG', 'MASQUERADE', 'REDIRECT'."
+                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'SNAT', 'LOG', 'MASQUERADE', 'REDIRECT'.
+									Default value is 'ACCEPT'. While this is not the accepted norm, this is the more commonly used jump target.
+									Users should ensure they do an explicit DROP for all packets after all the ACCEPT rules are specified."
       newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :SNAT, :LOG, :MASQUERADE, :REDIRECT)
-      defaultto "DROP"
+      defaultto "ACCEPT"
     end
 
     newparam(:source) do
@@ -445,10 +447,16 @@ module Puppet
                         when /(ubuntu|debian)/ then "/sbin/iptables-save > /etc/iptables.rules"
                         else nil
                         end
-          debug("Saving iptables with: #{persist_cmd}")
-          unless(persist_cmd == nil) then
-	          system(persist_cmd)
-          end
+
+					if Puppet[:noop]
+						debug("Would have saved iptables with: #{persist_cmd}")
+						next
+					else
+          	debug("Persisting iptables with: #{persist_cmd}")
+          	unless(persist_cmd == nil) then
+	          	system(persist_cmd)
+          	end
+					end
         end
 
         @@rules = {}
