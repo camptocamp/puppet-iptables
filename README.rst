@@ -3,7 +3,7 @@ Puppet iptables type
 ====================
 
 This is a simple wrapper around the "iptables" command used on Linux. It is
-ment to be used to define half a dozen rule on the host running puppet. For
+meant to be used to define half a dozen rules on the host running puppet. For
 more serious needs, you might want to have a look at this `shorewall module`_
 for puppet.
 
