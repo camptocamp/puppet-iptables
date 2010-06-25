@@ -189,6 +189,8 @@ module Puppet
 
       `#{@@iptables_dir}/iptables-save`.each { |l|
         if /^\*\S+/.match(l)
+					# Matched table
+
           table = self.matched(l.scan(/^\*(\S+)/))
 
           # init loaded_rules hash
@@ -199,8 +201,12 @@ module Puppet
           counter = 1
 
         elsif /^-A/.match(l)
-          # matched rule
+          # Matched rule
+          
 					debug("analyzing rule: #{l}")
+
+					# Parse the iptables rule looking for each component
+
           chain = self.matched(l.scan(/^-A (\S+)/))
 
           table = self.matched(l.scan(/-t (\S+)/))
@@ -342,22 +348,29 @@ module Puppet
       nil
     end
 
-    # Fix this function
+    # Load a file and using the passed in rules hash load the 
+    # rules contained therein.
     def load_rules_from_file(rules, file_name, action)
       if File.exist?(file_name)
         counter = 0
         File.open(file_name, "r") do |infile|
           while (line = infile.gets)
+						# Skip comments
             next unless /^\s*[^\s#]/.match(line.strip)
+
+						# Get the table the rule is operating on
             table = line[/-t\s+\S+/]
             table = "-t filter" unless table
             table.sub!(/^-t\s+/, '')
             rules[table] = [] unless rules[table]
+
+						# Build up rule hash
             rule =
               { 'table'         => table,
                 'full rule'     => line.strip,
                 'alt rule'      => line.strip}
 
+						# Push or insert rule onto table entry in rules hash
             if( action == :prepend )
               rules[table].insert(counter, rule)
             else
@@ -698,13 +711,42 @@ module Puppet
         end
       end
 
+			value_icmp = ""
       if value(:icmp).to_s != ""
         if value(:proto).to_s != "icmp"
           invalidrule = true
           err("--icmp-type only applies to icmp. Ignoring rule.")
         else
-          full_string += " --icmp-type " + value(:icmp).to_s
-          alt_string += " --icmp-type " + value(:icmp).to_s
+					value_icmp = value(:icmp).to_s
+
+					# Translate the symbolic names for icmp packet types to
+					# numbers. Otherwise iptables-save saves the rules as numbers
+					# and we will always fail the comparison causing re-loads.
+					unless value_icmp =~ /^\d{1,2}$/
+						value_icmp = case value_icmp
+							when "echo-reply" then "0"
+							when "destination-unreachable" then "3"
+							when "source-quence" then "4"
+							when "redirect" then "6"
+							when "echo-request" then "8"
+							when "router-advertisement" then "9"
+							when "router-solicitation" then "10"
+							when "time-exceeded" then "11"
+							when "parameter-problem" then "12"
+							when "timestamp-request" then "13"
+							when "timestamp-reply" then "14"
+							when "address-mask-request" then "17"
+							when "address-mask-reply" then "18"
+							else ""
+						end
+					end
+
+					if value_icmp == ""
+						err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
+					end
+
+          full_string += " --icmp-type " + value_icmp
+          alt_string += " --icmp-type " + value_icmp
         end
       end
 
@@ -863,7 +905,7 @@ module Puppet
                  'redirect'      => value(:redirect).to_s,
                  'log_level'     => value(:log_level).to_s,
                  'log_prefix'    => value(:log_prefix).to_s,
-                 'icmp'          => value(:icmp).to_s,
+                 'icmp'          => value_icmp,
                  'state'         => value(:state).to_s,
                  'limit'         => value(:limit).to_s,
                  'burst'         => value(:burst).to_s,
