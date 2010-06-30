@@ -75,8 +75,8 @@ module Puppet
     newparam(:jump) do
       desc "holds value of iptables --jump target
                   Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'SNAT', 'LOG', 'MASQUERADE', 'REDIRECT'.
-									Default value is 'ACCEPT'. While this is not the accepted norm, this is the more commonly used jump target.
-									Users should ensure they do an explicit DROP for all packets after all the ACCEPT rules are specified."
+                  Default value is 'ACCEPT'. While this is not the accepted norm, this is the more commonly used jump target.
+                  Users should ensure they do an explicit DROP for all packets after all the ACCEPT rules are specified."
       newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :SNAT, :LOG, :MASQUERADE, :REDIRECT)
       defaultto "ACCEPT"
     end
@@ -189,7 +189,7 @@ module Puppet
 
       `#{@@iptables_dir}/iptables-save`.each { |l|
         if /^\*\S+/.match(l)
-					# Matched table
+          # Matched table
 
           table = self.matched(l.scan(/^\*(\S+)/))
 
@@ -203,9 +203,9 @@ module Puppet
         elsif /^-A/.match(l)
           # Matched rule
           
-					debug("analyzing rule: #{l}")
+          debug("analyzing rule: #{l}")
 
-					# Parse the iptables rule looking for each component
+          # Parse the iptables rule looking for each component
 
           chain = self.matched(l.scan(/^-A (\S+)/))
 
@@ -313,7 +313,7 @@ module Puppet
           }
 
           if( numbered )
-						debug("Adding: #{counter.to_s} #{l.strip}")
+            debug("Adding: #{counter.to_s} #{l.strip}")
             table_rules[counter.to_s + " " +l.strip] = data
 
             # we also set table counters to indicate amount
@@ -321,7 +321,7 @@ module Puppet
             # we decide to refresh them
             @@table_counters[table] += 1
           else
-						debug("Adding: #{l.strip}")
+            debug("Adding: #{l.strip}")
             table_rules[l.strip] = data
           end
 
@@ -355,22 +355,22 @@ module Puppet
         counter = 0
         File.open(file_name, "r") do |infile|
           while (line = infile.gets)
-						# Skip comments
+            # Skip comments
             next unless /^\s*[^\s#]/.match(line.strip)
 
-						# Get the table the rule is operating on
+            # Get the table the rule is operating on
             table = line[/-t\s+\S+/]
             table = "-t filter" unless table
             table.sub!(/^-t\s+/, '')
             rules[table] = [] unless rules[table]
 
-						# Build up rule hash
+            # Build up rule hash
             rule =
               { 'table'         => table,
                 'full rule'     => line.strip,
                 'alt rule'      => line.strip}
 
-						# Push or insert rule onto table entry in rules hash
+            # Push or insert rule onto table entry in rules hash
             if( action == :prepend )
               rules[table].insert(counter, rule)
             else
@@ -461,15 +461,15 @@ module Puppet
                         else nil
                         end
 
-					if Puppet[:noop]
-						debug("Would have saved iptables with: #{persist_cmd}")
-						next
-					else
-          	debug("Persisting iptables with: #{persist_cmd}")
-          	unless(persist_cmd == nil) then
-	          	system(persist_cmd)
-          	end
-					end
+          if Puppet[:noop]
+            debug("Would have saved iptables with: #{persist_cmd}")
+            next
+          else
+            debug("Persisting iptables with: #{persist_cmd}")
+            unless(persist_cmd == nil) then
+              system(persist_cmd)
+            end
+          end
         end
 
         @@rules = {}
@@ -499,7 +499,7 @@ module Puppet
         debug("Current tables rules #{current_table_rules}")
         if rules_to_set
           rules_to_set.each { |rule_to_set|
-						debug("Looking for: #{rule_to_set['numbered rule']} or #{rule_to_set['altned rule']}")
+            debug("Looking for: #{rule_to_set['numbered rule']} or #{rule_to_set['altned rule']}")
             return true unless current_table_rules[rule_to_set['numbered rule']] or current_table_rules[rule_to_set['altned rule']]
           }
         end
@@ -711,39 +711,39 @@ module Puppet
         end
       end
 
-			value_icmp = ""
+      value_icmp = ""
       if value(:icmp).to_s != ""
         if value(:proto).to_s != "icmp"
           invalidrule = true
           err("--icmp-type only applies to icmp. Ignoring rule.")
         else
-					value_icmp = value(:icmp).to_s
+          value_icmp = value(:icmp).to_s
 
-					# Translate the symbolic names for icmp packet types to
-					# numbers. Otherwise iptables-save saves the rules as numbers
-					# and we will always fail the comparison causing re-loads.
-					unless value_icmp =~ /^\d{1,2}$/
-						value_icmp = case value_icmp
-							when "echo-reply" then "0"
-							when "destination-unreachable" then "3"
-							when "source-quence" then "4"
-							when "redirect" then "6"
-							when "echo-request" then "8"
-							when "router-advertisement" then "9"
-							when "router-solicitation" then "10"
-							when "time-exceeded" then "11"
-							when "parameter-problem" then "12"
-							when "timestamp-request" then "13"
-							when "timestamp-reply" then "14"
-							when "address-mask-request" then "17"
-							when "address-mask-reply" then "18"
-							else ""
-						end
-					end
+          # Translate the symbolic names for icmp packet types to
+          # numbers. Otherwise iptables-save saves the rules as numbers
+          # and we will always fail the comparison causing re-loads.
+          unless value_icmp =~ /^\d{1,2}$/
+            value_icmp = case value_icmp
+              when "echo-reply" then "0"
+              when "destination-unreachable" then "3"
+              when "source-quence" then "4"
+              when "redirect" then "6"
+              when "echo-request" then "8"
+              when "router-advertisement" then "9"
+              when "router-solicitation" then "10"
+              when "time-exceeded" then "11"
+              when "parameter-problem" then "12"
+              when "timestamp-request" then "13"
+              when "timestamp-reply" then "14"
+              when "address-mask-request" then "17"
+              when "address-mask-reply" then "18"
+              else ""
+            end
+          end
 
-					if value_icmp == ""
-						err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
-					end
+          if value_icmp == ""
+            err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
+          end
 
           full_string += " --icmp-type " + value_icmp
           alt_string += " --icmp-type " + value_icmp
