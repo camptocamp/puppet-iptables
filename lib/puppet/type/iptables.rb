@@ -210,6 +210,13 @@ module Puppet
           table = "filter" unless table
 
           proto = self.matched(l.scan(/-p (\S+)/))
+          # Some distros return "carp" for `getprotobynumber(112)`.
+          # Rewrite this to be synonymous of "vrrp".
+          if proto == "carp"
+            debug("Modifying protocol 'CARP' to synonym 'VRRP'.")
+            proto = "vrrp"
+            l.sub!(/(-p )carp/, '\1vrrp')
+          end
           proto = "all" unless proto
 
           jump = self.matched(l.scan(/-j (\S+)/))
