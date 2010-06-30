@@ -190,7 +190,6 @@ module Puppet
       `#{@@iptables_dir}/iptables-save`.each { |l|
         if /^\*\S+/.match(l)
           # Matched table
-
           table = self.matched(l.scan(/^\*(\S+)/))
 
           # init loaded_rules hash
@@ -202,11 +201,9 @@ module Puppet
 
         elsif /^-A/.match(l)
           # Matched rule
-          
-          debug("analyzing rule: #{l}")
+          debug("Analyzing rule: #{l.strip}")
 
           # Parse the iptables rule looking for each component
-
           chain = self.matched(l.scan(/^-A (\S+)/))
 
           table = self.matched(l.scan(/-t (\S+)/))
@@ -340,7 +337,6 @@ module Puppet
               return z.to_s
             }
           else
-
             return s.to_s
           end
         }
@@ -428,10 +424,10 @@ module Puppet
             if rules_to_set
               rules_to_set.each { |rule_to_set|
                 if self.noop
-                  debug("Would have run 'iptables -t #{table} #{rule_to_set['alt rule']}' (noop)")
+                  debug("Would have run [create]: 'iptables -t #{table} #{rule_to_set['alt rule']}' (noop)")
                   next
                 else
-                  debug("Running 'iptables -t #{table} #{rule_to_set['alt rule']}'")
+                  debug("Running [create]: 'iptables -t #{table} #{rule_to_set['alt rule']}'")
                   `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['alt rule']}`
                 end
               }
@@ -444,10 +440,10 @@ module Puppet
             if current_table_rules
               current_table_rules.each { |rule, data|
                 if self.noop
-                  debug("Would have run 'iptables -t #{table} -D #{data['chain']} 1' (noop)")
+                  debug("Would have run [delete]: 'iptables -t #{table} -D #{data['chain']} 1' (noop)")
                   next
                 else
-                  debug("Running 'iptables -t #{table} -D #{data['chain']} 1'")
+                  debug("Running [delete]: 'iptables -t #{table} -D #{data['chain']} 1'")
                   `#{@@iptables_dir}/iptables -t #{table} -D #{data['chain']} 1`
                 end
               }
@@ -461,14 +457,15 @@ module Puppet
                         else nil
                         end
 
-          if Puppet[:noop]
-            debug("Would have saved iptables with: #{persist_cmd}")
-            next
-          else
-            debug("Persisting iptables with: #{persist_cmd}")
-            unless(persist_cmd == nil) then
+          if persist_cmd != nil
+            if Puppet[:noop]
+              debug("Would have run [save]: #{persist_cmd} (noop)")
+            else
+              debug("Running [save]: #{persist_cmd}")
               system(persist_cmd)
             end
+          else
+            err("No save method known for your OS. Rules will not be saved!")
           end
         end
 
@@ -496,7 +493,9 @@ module Puppet
         rules_to_set = @@rules[table]
         current_table_rules = @@current_rules[table]
         current_table_rules = {} unless current_table_rules
-        debug("Current tables rules #{current_table_rules}")
+        current_table_rules.each do |rule, data|
+          debug("Current tables rules: #{rule}")
+        end
         if rules_to_set
           rules_to_set.each { |rule_to_set|
             debug("Looking for: #{rule_to_set['numbered rule']} or #{rule_to_set['altned rule']}")
@@ -539,10 +538,10 @@ module Puppet
             if data['keep']
             else
               if self.noop
-                debug("Would have run 'iptables -t #{table} #{rule.sub('-A', '-D')}' (noop)")
+                debug("Would have run [delete]: 'iptables -t #{table} #{rule.sub('-A', '-D')}' (noop)")
                 next
               else
-                debug("Running 'iptables -t #{table} #{rule.sub('-A', '-D')}'")
+                debug("Running [delete]: 'iptables -t #{table} #{rule.sub('-A', '-D')}'")
                 `#{@@iptables_dir}/iptables -t #{table} #{rule.sub("-A", "-D")}`
               end
               deleted += 1
