@@ -148,8 +148,8 @@ module Puppet
 
     newparam(:state) do
       desc "value for iptables '-m state --state' parameter.
-                  Possible values are: 'INVALID', 'ESTABLISHED', 'NEW', 'RELATED'."
-      newvalues(:INVALID, :ESTABLISHED, :NEW, :RELATED)
+                  Possible values are: 'INVALID', 'ESTABLISHED', 'NEW', 'RELATED'.
+                  Also accepts an array of multiple values."
     end
 
     newparam(:limit) do
