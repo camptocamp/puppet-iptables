@@ -833,6 +833,7 @@ module Puppet
       full_string += " -j " + value(:jump).to_s
       alt_string += " -j " + value(:jump).to_s
 
+      value_reject = ""
       if value(:jump).to_s == "DNAT"
         if value(:table).to_s != "nat"
           invalidrule = true
@@ -864,10 +865,10 @@ module Puppet
           alt_string += " --to-ports " + value(:toports).to_s
         end
       elsif value(:jump).to_s == "REJECT"
-        if value(:reject).to_s != ""
-          full_string += " --reject-with " + value(:reject).to_s
-          alt_string += " --reject-with " + value(:reject).to_s
-        end
+        # Apply the default rejection type if none is specified.
+        value_reject = value(:reject).to_s != "" ? value(:reject).to_s : "icmp-port-unreachable"
+        full_string += " --reject-with " + value_reject
+        alt_string += " --reject-with " + value_reject
       elsif value(:jump).to_s == "LOG"
         if value(:log_level).to_s != ""
           full_string += " --log-level " + value(:log_level).to_s
@@ -911,7 +912,7 @@ module Puppet
                  'todest'        => value(:todest).to_s,
                  'tosource'      => value(:tosource).to_s,
                  'toports'       => value(:toports).to_s,
-                 'reject'        => value(:reject).to_s,
+                 'reject'        => value_reject,
                  'redirect'      => value(:redirect).to_s,
                  'log_level'     => value(:log_level).to_s,
                  'log_prefix'    => value(:log_prefix).to_s,
