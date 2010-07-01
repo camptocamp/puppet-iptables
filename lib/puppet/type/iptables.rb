@@ -755,6 +755,7 @@ module Puppet
           end
 
           if value_icmp == ""
+            invalidrule = true
             err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
           end
 
