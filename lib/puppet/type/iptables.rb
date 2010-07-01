@@ -369,9 +369,8 @@ module Puppet
 
             # Build up rule hash
             rule =
-              { 'table'         => table,
-                'full rule'     => line.strip,
-                'alt rule'      => line.strip}
+              { 'table'   => table,
+                'rule'    => line.strip}
 
             # Push or insert rule onto table entry in rules hash
             if( action == :prepend )
@@ -393,7 +392,7 @@ module Puppet
       # sort rules by alphabetical order, grouped by chain, else they arrive in
       # random order and cause puppet to reload iptables rules.
       @@rules.each_key {|key|
-        @@rules[key] = @@rules[key].sort_by {|rule| [rule["chain_prio"], rule["name"]] }
+        @@rules[key] = @@rules[key].sort_by { |rule| [rule["chain_prio"], rule["name"], rule["source"]] }
       }
 
       # load pre and post rules
@@ -406,8 +405,7 @@ module Puppet
         if rules_to_set
           counter = 1
           rules_to_set.each { |rule|
-            rule['numbered rule'] = counter.to_s + " "+rule["full rule"]
-            rule['altned rule']   = counter.to_s + " "+rule["alt rule"]
+            rule['nrule'] = counter.to_s + " " + rule["rule"]
             counter += 1
           }
         end
@@ -431,11 +429,11 @@ module Puppet
             if rules_to_set
               rules_to_set.each { |rule_to_set|
                 if self.noop
-                  debug("Would have run [create]: 'iptables -t #{table} #{rule_to_set['alt rule']}' (noop)")
+                  debug("Would have run [create]: 'iptables -t #{table} #{rule_to_set['rule']}' (noop)")
                   next
                 else
-                  debug("Running [create]: 'iptables -t #{table} #{rule_to_set['alt rule']}'")
-                  `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['alt rule']}`
+                  debug("Running [create]: 'iptables -t #{table} #{rule_to_set['rule']}'")
+                  `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['rule']}`
                 end
               }
             end
@@ -509,8 +507,8 @@ module Puppet
         end
         if rules_to_set
           rules_to_set.each { |rule_to_set|
-            debug("Looking for: #{rule_to_set['numbered rule']} or #{rule_to_set['altned rule']}")
-            return true unless current_table_rules[rule_to_set['numbered rule']] or current_table_rules[rule_to_set['altned rule']]
+            debug("Looking for: #{rule_to_set['nrule']}")
+            return true unless current_table_rules[rule_to_set['nrule']]
           }
         end
       }
@@ -532,12 +530,9 @@ module Puppet
         if rules_to_set
           if current_table_rules
             rules_to_set.each { |rule_to_set|
-              full_rule = rule_to_set['full rule']
-              alt_rule  = rule_to_set['alt rule']
-              if    current_table_rules[full_rule]
-                current_table_rules[full_rule]['keep'] = 'me'
-              elsif current_table_rules[alt_rule]
-                current_table_rules[alt_rule]['keep']  = 'me'
+              rule = rule_to_set['rule']
+              if current_table_rules[rule]
+                current_table_rules[rule]['keep'] = 'me'
               end
             }
           end
@@ -672,13 +667,10 @@ module Puppet
         end
       end
 
-      alt_string  = full_string
-
       if value(:proto).to_s != "all"
-        alt_string  += " -p " + value(:proto).to_s
         full_string += " -p " + value(:proto).to_s
         if not ["vrrp", "igmp"].include?(value(:proto).to_s)
-          alt_string += " -m " + value(:proto).to_s
+          full_string += " -m " + value(:proto).to_s
         end
       end
 
@@ -687,14 +679,12 @@ module Puppet
           if value(:dport).class.to_s == "Array"
             if value(:dport).length <= 15
               full_string += " -m multiport --dports " + value(:dport).join(",")
-              alt_string += " -m multiport --dports " + value(:dport).join(",")
             else
               invalidrule = true
               err("multiport module only accepts <= 15 ports. Ignoring rule.")
             end
           else
             full_string += " --dport " + value(:dport).to_s
-            alt_string  += " --dport " + value(:dport).to_s
           end
         else
           invalidrule = true
@@ -706,14 +696,12 @@ module Puppet
           if value(:sport).class.to_s == "Array"
             if value(:sport).length <= 15
               full_string += " -m multiport --sports " + value(:sport).join(",")
-              alt_string += " -m multiport --sports " + value(:sport).join(",")
             else
               invalidrule = true
               err("multiport module only accepts <= 15 ports. Ignoring rule.")
             end
           else
             full_string += " --sport " + value(:sport).to_s
-            alt_string  += " --sport " + value(:sport).to_s
           end
         else
           invalidrule = true
@@ -756,7 +744,6 @@ module Puppet
           end
 
           full_string += " --icmp-type " + value_icmp
-          alt_string += " --icmp-type " + value_icmp
         end
       end
 
@@ -777,7 +764,6 @@ module Puppet
           states = state_order & value(:state)
 
           full_string += " -m state --state " + states.join(",")
-          alt_string  += " -m state --state " + states.join(",")
         else
           invalidrule = true
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
@@ -785,7 +771,6 @@ module Puppet
       elsif value(:state).to_s != ""
         if state_order.include?(value(:state).to_s)
           full_string += " -m state --state " + value(:state).to_s
-          alt_string  += " -m state --state " + value(:state).to_s
         else
           invalidrule = true
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
@@ -794,7 +779,6 @@ module Puppet
 
       if value(:name).to_s != ""
         full_string += " -m comment --comment \"" + value(:name).to_s + "\""
-        alt_string += " -m comment --comment \"" + value(:name).to_s + "\""
       end
 
       if value(:limit).to_s != ""
@@ -809,7 +793,6 @@ module Puppet
             err("'limit' values must be numeric. Ignoring rule.")
           elsif ["sec", "min", "hour", "day"].include? limit_value[1]
             full_string += " -m limit --limit " + value(:limit).to_s
-            alt_string += " -m limit --limit " + value(:limit).to_s
           else
             invalidrule = true
             err("Please use only sec/min/hour/day suffixes with 'limit'. Ignoring rule.")
@@ -826,12 +809,10 @@ module Puppet
           err("'burst' accepts only numeric values. Ignoring rule.")
         else
           full_string += " --limit-burst " + value(:burst).to_s
-          alt_string += " --limit-burst " + value(:burst).to_s
         end
       end
 
       full_string += " -j " + value(:jump).to_s
-      alt_string += " -j " + value(:jump).to_s
 
       value_reject = ""
       if value(:jump).to_s == "DNAT"
@@ -843,7 +824,6 @@ module Puppet
           err("DNAT missing mandatory 'todest' parameter.")
         else
           full_string += " --to-destination " + value(:todest).to_s
-          alt_string += " --to-destination " + value(:todest).to_s
         end
       elsif value(:jump).to_s == "SNAT"
         if value(:table).to_s != "nat"
@@ -854,7 +834,6 @@ module Puppet
           err("SNAT missing mandatory 'tosource' parameter.")
         else
           full_string += " --to-source " + value(:tosource).to_s
-          alt_string += " --to-source " + value(:tosource).to_s
         end
       elsif value(:jump).to_s == "REDIRECT"
         if value(:toports).to_s == ""
@@ -862,23 +841,19 @@ module Puppet
           err("REDIRECT missing mandatory 'toports' parameter.")
         else
           full_string += " --to-ports " + value(:toports).to_s
-          alt_string += " --to-ports " + value(:toports).to_s
         end
       elsif value(:jump).to_s == "REJECT"
         # Apply the default rejection type if none is specified.
         value_reject = value(:reject).to_s != "" ? value(:reject).to_s : "icmp-port-unreachable"
         full_string += " --reject-with " + value_reject
-        alt_string += " --reject-with " + value_reject
       elsif value(:jump).to_s == "LOG"
         if value(:log_level).to_s != ""
           full_string += " --log-level " + value(:log_level).to_s
-          alt_string += " --log-level " + value(:log_level).to_s
         end
         if value(:log_prefix).to_s != ""
           # --log-prefix has a 29 characters limitation.
           log_prefix = "\"" + value(:log_prefix).to_s[0,27] + ": \""
           full_string += " --log-prefix " + log_prefix
-          alt_string += " --log-prefix " + log_prefix
         end
       elsif value(:jump).to_s == "MASQUERADE"
         if value(:table).to_s != "nat"
@@ -888,7 +863,6 @@ module Puppet
       elsif value(:jump).to_s == "REDIRECT"
         if value(:redirect).to_s != ""
           full_string += " --to-ports " + value(:redirect).to_s
-          alt_string += " --to-ports " + value(:redirect).to_s
         end
       end
 
@@ -921,8 +895,7 @@ module Puppet
                  'limit'         => value(:limit).to_s,
                  'burst'         => value(:burst).to_s,
                  'chain_prio'    => chain_prio.to_s,
-                 'full rule'     => full_string,
-                 'alt rule'      => alt_string})
+                 'rule'          => full_string})
       end
     end
   end
