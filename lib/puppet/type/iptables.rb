@@ -82,7 +82,8 @@ module Puppet
     end
 
     newparam(:source) do
-      desc "value for iptables --source parameter"
+      desc "value for iptables --source parameter.
+                  Accepts a single string or array."
     end
 
     newparam(:destination) do
@@ -611,7 +612,8 @@ module Puppet
       table = value(:table).to_s
       @@rules[table] = [] unless @@rules[table]
 
-      full_string = ""
+      # Create a Hash with all available params defaulted to empty strings.
+      strings = self.class.allattrs.inject({}) { |x,y| x[y] = ""; x }
 
       if value(:table).to_s == "filter" and ["PREROUTING", "POSTROUTING"].include?(value(:chain).to_s)
         invalidrule = true
@@ -623,19 +625,30 @@ module Puppet
         invalidrule = true
         err("INPUT, FORWARD and POSTROUTING cannot be used in table 'raw'. Ignoring rule.")
       else
-        full_string += "-A " + value(:chain).to_s
+        strings[:table] = "-A " + value(:chain).to_s
       end
 
-      source = value(:source).to_s
-      if source != ""
-        ip = IpCidr.new(source)
-        if @@usecidr
-          source = ip.cidr
-        else
-          source = ip.to_s
-          source += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
-        end
-        full_string += " -s " + source
+      sources = []
+      if value(:source).to_s != ""
+        value(:source).each { |source|
+          ip = IpCidr.new(source.to_s)
+          if @@usecidr
+            source = ip.cidr
+          else
+            source = ip.to_s
+            source += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
+          end
+          sources.push({
+            :host   => source,
+            :string => " -s " + source
+          })
+        }
+      else
+        # Used later for a single iteration of the rule if there are no sources.
+        sources.push({
+          :host   => "",
+          :string => ""
+        })
       end
 
       destination = value(:destination).to_s
@@ -647,20 +660,21 @@ module Puppet
           destination = ip.to_s
           destination += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
         end
-        full_string += " -d " + destination
+        strings[:destination] = " -d " + destination
       end
 
       if value(:iniface).to_s != ""
         if ["INPUT", "FORWARD", "PREROUTING"].include?(value(:chain).to_s)
-          full_string += " -i " + value(:iniface).to_s
+          strings[:iniface] = " -i " + value(:iniface).to_s
         else
           invalidrule = true
           err("--in-interface only applies to INPUT/FORWARD/PREROUTING. Ignoring rule.")
         end
       end
+
       if value(:outiface).to_s != ""
         if ["OUTPUT", "FORWARD", "POSTROUTING"].include?(value(:chain).to_s)
-          full_string += " -o " + value(:outiface).to_s
+          strings[:outiface] = " -o " + value(:outiface).to_s
         else
           invalidrule = true
           err("--out-interface only applies to OUTPUT/FORWARD/POSTROUTING. Ignoring rule.")
@@ -668,40 +682,41 @@ module Puppet
       end
 
       if value(:proto).to_s != "all"
-        full_string += " -p " + value(:proto).to_s
+        strings[:proto] = " -p " + value(:proto).to_s
         if not ["vrrp", "igmp"].include?(value(:proto).to_s)
-          full_string += " -m " + value(:proto).to_s
+          strings[:proto] += " -m " + value(:proto).to_s
         end
       end
 
       if value(:dport).to_s != ""
         if ["tcp", "udp"].include?(value(:proto).to_s)
-          if value(:dport).class.to_s == "Array"
+          if value(:dport).is_a?(Array)
             if value(:dport).length <= 15
-              full_string += " -m multiport --dports " + value(:dport).join(",")
+              strings[:dport] = " -m multiport --dports " + value(:dport).join(",")
             else
               invalidrule = true
               err("multiport module only accepts <= 15 ports. Ignoring rule.")
             end
           else
-            full_string += " --dport " + value(:dport).to_s
+            strings[:dport] = " --dport " + value(:dport).to_s
           end
         else
           invalidrule = true
           err("--destination-port only applies to tcp/udp. Ignoring rule.")
         end
       end
+
       if value(:sport).to_s != ""
         if ["tcp", "udp"].include?(value(:proto).to_s)
-          if value(:sport).class.to_s == "Array"
+          if value(:sport).is_a?(Array)
             if value(:sport).length <= 15
-              full_string += " -m multiport --sports " + value(:sport).join(",")
+              strings[:sport] = " -m multiport --sports " + value(:sport).join(",")
             else
               invalidrule = true
               err("multiport module only accepts <= 15 ports. Ignoring rule.")
             end
           else
-            full_string += " --sport " + value(:sport).to_s
+            strings[:sport] = " --sport " + value(:sport).to_s
           end
         else
           invalidrule = true
@@ -743,13 +758,13 @@ module Puppet
             err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
           end
 
-          full_string += " --icmp-type " + value_icmp
+          strings[:icmp] = " --icmp-type " + value_icmp
         end
       end
 
       # let's specify the order of the states as iptables uses them
       state_order = ["INVALID", "NEW", "RELATED", "ESTABLISHED"]
-      if value(:state).class.to_s == "Array"
+      if value(:state).is_a?(Array)
 
         invalid_state = false
         value(:state).each {|v|
@@ -763,14 +778,14 @@ module Puppet
           # in the same order as the 'state_order' array
           states = state_order & value(:state)
 
-          full_string += " -m state --state " + states.join(",")
+          strings[:state] = " -m state --state " + states.join(",")
         else
           invalidrule = true
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
         end
       elsif value(:state).to_s != ""
         if state_order.include?(value(:state).to_s)
-          full_string += " -m state --state " + value(:state).to_s
+          strings[:state] = " -m state --state " + value(:state).to_s
         else
           invalidrule = true
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
@@ -778,7 +793,7 @@ module Puppet
       end
 
       if value(:name).to_s != ""
-        full_string += " -m comment --comment \"" + value(:name).to_s + "\""
+        strings[:comment] = " -m comment --comment \"" + value(:name).to_s + "\""
       end
 
       if value(:limit).to_s != ""
@@ -792,7 +807,7 @@ module Puppet
             invalidrule = true
             err("'limit' values must be numeric. Ignoring rule.")
           elsif ["sec", "min", "hour", "day"].include? limit_value[1]
-            full_string += " -m limit --limit " + value(:limit).to_s
+            strings[:limit] = " -m limit --limit " + value(:limit).to_s
           else
             invalidrule = true
             err("Please use only sec/min/hour/day suffixes with 'limit'. Ignoring rule.")
@@ -808,11 +823,11 @@ module Puppet
           invalidrule = true
           err("'burst' accepts only numeric values. Ignoring rule.")
         else
-          full_string += " --limit-burst " + value(:burst).to_s
+          strings[:burst] = " --limit-burst " + value(:burst).to_s
         end
       end
 
-      full_string += " -j " + value(:jump).to_s
+      strings[:jump] = " -j " + value(:jump).to_s
 
       value_reject = ""
       if value(:jump).to_s == "DNAT"
@@ -823,7 +838,7 @@ module Puppet
           invalidrule = true
           err("DNAT missing mandatory 'todest' parameter.")
         else
-          full_string += " --to-destination " + value(:todest).to_s
+          strings[:todest] = " --to-destination " + value(:todest).to_s
         end
       elsif value(:jump).to_s == "SNAT"
         if value(:table).to_s != "nat"
@@ -833,27 +848,27 @@ module Puppet
           invalidrule = true
           err("SNAT missing mandatory 'tosource' parameter.")
         else
-          full_string += " --to-source " + value(:tosource).to_s
+          strings[:tosource] = " --to-source " + value(:tosource).to_s
         end
       elsif value(:jump).to_s == "REDIRECT"
         if value(:toports).to_s == ""
           invalidrule = true
           err("REDIRECT missing mandatory 'toports' parameter.")
         else
-          full_string += " --to-ports " + value(:toports).to_s
+          strings[:toports] = " --to-ports " + value(:toports).to_s
         end
       elsif value(:jump).to_s == "REJECT"
         # Apply the default rejection type if none is specified.
         value_reject = value(:reject).to_s != "" ? value(:reject).to_s : "icmp-port-unreachable"
-        full_string += " --reject-with " + value_reject
+        strings[:reject] = " --reject-with " + value_reject
       elsif value(:jump).to_s == "LOG"
         if value(:log_level).to_s != ""
-          full_string += " --log-level " + value(:log_level).to_s
+          strings[:log_level] = " --log-level " + value(:log_level).to_s
         end
         if value(:log_prefix).to_s != ""
           # --log-prefix has a 29 characters limitation.
           log_prefix = "\"" + value(:log_prefix).to_s[0,27] + ": \""
-          full_string += " --log-prefix " + log_prefix
+          strings[:log_prefix] = " --log-prefix " + log_prefix
         end
       elsif value(:jump).to_s == "MASQUERADE"
         if value(:table).to_s != "nat"
@@ -862,41 +877,70 @@ module Puppet
         end
       elsif value(:jump).to_s == "REDIRECT"
         if value(:redirect).to_s != ""
-          full_string += " --to-ports " + value(:redirect).to_s
+          strings[:redirect] = " --to-ports " + value(:redirect).to_s
         end
       end
 
       chain_prio = @@chain_order[value(:chain).to_s]
 
-      debug("iptables param: #{full_string}")
-
-      if invalidrule != true
-        @@rules[table].
-          push({ 'name'          => value(:name).to_s,
-                 'chain'         => value(:chain).to_s,
-                 'table'         => value(:table).to_s,
-                 'proto'         => value(:proto).to_s,
-                 'jump'          => value(:jump).to_s,
-                 'source'        => value(:source).to_s,
-                 'destination'   => value(:destination).to_s,
-                 'sport'         => value(:sport).to_s,
-                 'dport'         => value(:dport).to_s,
-                 'iniface'       => value(:iniface).to_s,
-                 'outiface'      => value(:outiface).to_s,
-                 'todest'        => value(:todest).to_s,
-                 'tosource'      => value(:tosource).to_s,
-                 'toports'       => value(:toports).to_s,
-                 'reject'        => value_reject,
-                 'redirect'      => value(:redirect).to_s,
-                 'log_level'     => value(:log_level).to_s,
-                 'log_prefix'    => value(:log_prefix).to_s,
-                 'icmp'          => value_icmp,
-                 'state'         => value(:state).to_s,
-                 'limit'         => value(:limit).to_s,
-                 'burst'         => value(:burst).to_s,
-                 'chain_prio'    => chain_prio.to_s,
-                 'rule'          => full_string})
-      end
+      # Generate a rule entry for each source permutation.
+      sources.each { |source|
+        
+        # Build a string of arguments in the required order.
+        rule_string = "%s" * 21 % [
+          strings[:table],
+          source[:string],
+          strings[:destination],
+          strings[:iniface],
+          strings[:outiface],
+          strings[:proto],
+          strings[:dport],
+          strings[:sport],
+          strings[:icmp],
+          strings[:state],
+          strings[:comment],
+          strings[:limit],
+          strings[:burst],
+          strings[:jump],
+          strings[:todest],
+          strings[:tosource],
+          strings[:toports],
+          strings[:reject],
+          strings[:log_level],
+          strings[:log_prefix],
+          strings[:redirect]
+        ]
+        
+        debug("iptables param: #{rule_string}")
+        if invalidrule != true
+          @@rules[table].push({
+            'name'          => value(:name).to_s,
+            'chain'         => value(:chain).to_s,
+            'table'         => value(:table).to_s,
+            'proto'         => value(:proto).to_s,
+            'jump'          => value(:jump).to_s,
+            'source'        => source[:host],
+            'destination'   => value(:destination).to_s,
+            'sport'         => value(:sport).to_s,
+            'dport'         => value(:dport).to_s,
+            'iniface'       => value(:iniface).to_s,
+            'outiface'      => value(:outiface).to_s,
+            'todest'        => value(:todest).to_s,
+            'tosource'      => value(:tosource).to_s,
+            'toports'       => value(:toports).to_s,
+            'reject'        => value_reject,
+            'redirect'      => value(:redirect).to_s,
+            'log_level'     => value(:log_level).to_s,
+            'log_prefix'    => value(:log_prefix).to_s,
+            'icmp'          => value_icmp,
+            'state'         => value(:state).to_s,
+            'limit'         => value(:limit).to_s,
+            'burst'         => value(:burst).to_s,
+            'chain_prio'    => chain_prio.to_s,
+            'rule'          => rule_string
+          })
+        end
+      }
     end
   end
 end
