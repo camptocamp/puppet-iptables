@@ -725,10 +725,9 @@ module Puppet
       end
 
       value_icmp = ""
-      if value(:icmp).to_s != ""
-        if value(:proto).to_s != "icmp"
-          invalidrule = true
-          err("--icmp-type only applies to icmp. Ignoring rule.")
+      if value(:proto).to_s == "icmp"
+        if value(:icmp).to_s == ""
+          value_icmp = "any"
         else
           value_icmp = value(:icmp).to_s
 
@@ -759,8 +758,9 @@ module Puppet
             err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
           end
 
-          strings[:icmp] = " --icmp-type " + value_icmp
         end
+
+        strings[:icmp] = " --icmp-type " + value_icmp
       end
 
       # let's specify the order of the states as iptables uses them
@@ -895,8 +895,8 @@ module Puppet
           strings[:iniface],
           strings[:outiface],
           strings[:proto],
-          strings[:dport],
           strings[:sport],
+          strings[:dport],
           strings[:icmp],
           strings[:state],
           strings[:comment],
