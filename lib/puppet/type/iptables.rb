@@ -1,4 +1,5 @@
 require "ipaddr"
+require 'resolv'
 
 module Puppet
 
@@ -631,6 +632,9 @@ module Puppet
       sources = []
       if value(:source).to_s != ""
         value(:source).each { |source|
+          if source !~ /\//
+            source = Resolv.getaddress(source)
+          end
           ip = IpCidr.new(source.to_s)
           if @@usecidr
             source = ip.cidr
@@ -653,6 +657,9 @@ module Puppet
 
       destination = value(:destination).to_s
       if destination != ""
+        if destination !~ /\//
+          destination = Resolv.getaddress(destination)
+        end
         ip = IpCidr.new(destination)
         if @@usecidr
           destination = ip.cidr
