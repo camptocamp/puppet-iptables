@@ -560,7 +560,7 @@ module Puppet
       return deleted
     end
 
-    def evaluate
+    def properties
       @@ordered_rules[self.name] = @@instance_count
       @@instance_count += 1
 
