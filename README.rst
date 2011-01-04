@@ -88,15 +88,13 @@ parameters.
 Installation
 ------------
 
-Clone this git repository in your $modulepath on the puppetmaster, then ensure
-you have the following in your puppet.conf, both on the client and the server
-side::
+If you are using standard path locations, then just clone this git repository in your $modulepath on the puppetmaster, for example:
 
-  [main]
-    libdir = /var/lib/puppet/lib
+  cd /etc/puppet/modules
+  git clone git://github.com/bobsh/puppet-iptables.git iptables
 
-  [puppetd]
-    pluginsync=true
-    plugindest=/var/lib/puppet/lib
+Also ensure you have the following in your puppet.conf on the client and master side:
 
+  [agent]
+  pluginsync=true
 
