@@ -1,4 +1,5 @@
 require "ipaddr"
+require 'resolv'
 
 module Puppet
 
@@ -67,20 +68,23 @@ module Puppet
     newparam(:proto) do
       desc "holds value of iptables --protocol parameter.
                   Possible values are: 'tcp', 'udp', 'icmp', 'esp', 'ah', 'vrrp', 'igmp', 'all'.
-                  Default value is 'all'"
+                  Default value is 'tcp'"
       newvalues(:tcp, :udp, :icmp, :esp, :ah, :vrrp, :igmp, :all)
-      defaultto "all"
+      defaultto "tcp"
     end
 
     newparam(:jump) do
       desc "holds value of iptables --jump target
-                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'LOG', 'MASQUERADE', 'REDIRECT'."
-      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :LOG, :MASQUERADE, :REDIRECT)
-      defaultto "DROP"
+                  Possible values are: 'ACCEPT', 'DROP', 'REJECT', 'DNAT', 'SNAT', 'LOG', 'MASQUERADE', 'REDIRECT'.
+                  Default value is 'ACCEPT'. While this is not the accepted norm, this is the more commonly used jump target.
+                  Users should ensure they do an explicit DROP for all packets after all the ACCEPT rules are specified."
+      newvalues(:ACCEPT, :DROP, :REJECT, :DNAT, :SNAT, :LOG, :MASQUERADE, :REDIRECT)
+      defaultto "ACCEPT"
     end
 
     newparam(:source) do
-      desc "value for iptables --source parameter"
+      desc "value for iptables --source parameter.
+                  Accepts a single string or array."
     end
 
     newparam(:destination) do
@@ -109,8 +113,18 @@ module Puppet
       desc "value for iptables --out-interface parameter"
     end
 
+    newparam(:tosource) do
+      desc "value for iptables '-j SNAT --to-source' parameter"
+      defaultto ""
+    end
+
     newparam(:todest) do
       desc "value for iptables '-j DNAT --to-destination' parameter"
+      defaultto ""
+    end
+
+    newparam(:toports) do
+      desc "value for iptables '-j REDIRECT --to-ports' parameter"
       defaultto ""
     end
 
@@ -136,7 +150,8 @@ module Puppet
 
     newparam(:state) do
       desc "value for iptables '-m state --state' parameter.
-                  Possible values are: 'INVALID', 'ESTABLISHED', 'NEW', 'RELATED'."
+                  Possible values are: 'INVALID', 'ESTABLISHED', 'NEW', 'RELATED'.
+                  Also accepts an array of multiple values."
     end
 
     newparam(:limit) do
@@ -176,6 +191,7 @@ module Puppet
 
       `#{@@iptables_dir}/iptables-save`.each { |l|
         if /^\*\S+/.match(l)
+          # Matched table
           table = self.matched(l.scan(/^\*(\S+)/))
 
           # init loaded_rules hash
@@ -186,13 +202,23 @@ module Puppet
           counter = 1
 
         elsif /^-A/.match(l)
-          # matched rule
+          # Matched rule
+          debug("Analyzing rule: #{l.strip}")
+
+          # Parse the iptables rule looking for each component
           chain = self.matched(l.scan(/^-A (\S+)/))
 
           table = self.matched(l.scan(/-t (\S+)/))
           table = "filter" unless table
 
           proto = self.matched(l.scan(/-p (\S+)/))
+          # Some distros return "carp" for `getprotobynumber(112)`.
+          # Rewrite this to be synonymous of "vrrp".
+          if proto == "carp"
+            debug("Modifying protocol 'CARP' to synonym 'VRRP'.")
+            proto = "vrrp"
+            l.sub!(/(-p )carp/, '\1vrrp')
+          end
           proto = "all" unless proto
 
           jump = self.matched(l.scan(/-j (\S+)/))
@@ -235,6 +261,12 @@ module Puppet
           todest = self.matched(l.scan(/--to-destination (\S+)/))
           todest = "" unless todest
 
+          tosource = self.matched(l.scan(/--to-source (\S+)/))
+          tosource = "" unless tosource
+
+          toports = self.matched(l.scan(/--to-ports (\S+)/))
+          toports = "" unless toports
+
           reject = self.matched(l.scan(/--reject-with (\S+)/))
           reject = "" unless reject
 
@@ -249,6 +281,8 @@ module Puppet
 
           state = self.matched(l.scan(/--state (\S+)/))
           state = "" unless state
+
+          name = self.matched(l.scan(/--comment (\S+)/))
 
           limit = self.matched(l.scan(/--limit (\S+)/))
           limit = "" unless limit
@@ -271,6 +305,8 @@ module Puppet
             'iniface'    => iniface,
             'outiface'   => outiface,
             'todest'     => todest,
+            'tosource'   => tosource,
+            'toports'    => toports,
             'reject'     => reject,
             'log_level'  => log_level,
             'log_prefix' => log_prefix,
@@ -279,9 +315,11 @@ module Puppet
             'limit'      => limit,
             'burst'      => burst,
             'redirect'   => redirect,
+            'name'       => name
           }
 
           if( numbered )
+            debug("Adding: #{counter.to_s} #{l.strip}")
             table_rules[counter.to_s + " " +l.strip] = data
 
             # we also set table counters to indicate amount
@@ -289,6 +327,7 @@ module Puppet
             # we decide to refresh them
             @@table_counters[table] += 1
           else
+            debug("Adding: #{l.strip}")
             table_rules[l.strip] = data
           end
 
@@ -307,7 +346,6 @@ module Puppet
               return z.to_s
             }
           else
-
             return s.to_s
           end
         }
@@ -315,22 +353,28 @@ module Puppet
       nil
     end
 
-    # Fix this function
+    # Load a file and using the passed in rules hash load the 
+    # rules contained therein.
     def load_rules_from_file(rules, file_name, action)
       if File.exist?(file_name)
         counter = 0
         File.open(file_name, "r") do |infile|
           while (line = infile.gets)
+            # Skip comments
             next unless /^\s*[^\s#]/.match(line.strip)
+
+            # Get the table the rule is operating on
             table = line[/-t\s+\S+/]
             table = "-t filter" unless table
             table.sub!(/^-t\s+/, '')
             rules[table] = [] unless rules[table]
-            rule =
-              { 'table'         => table,
-                'full rule'     => line.strip,
-                'alt rule'      => line.strip}
 
+            # Build up rule hash
+            rule =
+              { 'table'   => table,
+                'rule'    => line.strip}
+
+            # Push or insert rule onto table entry in rules hash
             if( action == :prepend )
               rules[table].insert(counter, rule)
             else
@@ -350,7 +394,7 @@ module Puppet
       # sort rules by alphabetical order, grouped by chain, else they arrive in
       # random order and cause puppet to reload iptables rules.
       @@rules.each_key {|key|
-        @@rules[key] = @@rules[key].sort_by {|rule| [rule["chain_prio"], rule["name"]] }
+        @@rules[key] = @@rules[key].sort_by { |rule| [rule["chain_prio"], rule["name"], rule["source"]] }
       }
 
       # load pre and post rules
@@ -363,8 +407,7 @@ module Puppet
         if rules_to_set
           counter = 1
           rules_to_set.each { |rule|
-            rule['numbered rule'] = counter.to_s + " "+rule["full rule"]
-            rule['altned rule']   = counter.to_s + " "+rule["alt rule"]
+            rule['nrule'] = counter.to_s + " " + rule["rule"]
             counter += 1
           }
         end
@@ -388,11 +431,11 @@ module Puppet
             if rules_to_set
               rules_to_set.each { |rule_to_set|
                 if self.noop
-                  debug("Would have run 'iptables -t #{table} #{rule_to_set['alt rule']}' (noop)")
+                  debug("Would have run [create]: 'iptables -t #{table} #{rule_to_set['rule']}' (noop)")
                   next
                 else
-                  debug("Running 'iptables -t #{table} #{rule_to_set['alt rule']}'")
-                  `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['alt rule']}`
+                  debug("Running [create]: 'iptables -t #{table} #{rule_to_set['rule']}'")
+                  `#{@@iptables_dir}/iptables -t #{table} #{rule_to_set['rule']}`
                 end
               }
             end
@@ -404,15 +447,37 @@ module Puppet
             if current_table_rules
               current_table_rules.each { |rule, data|
                 if self.noop
-                  debug("Would have run 'iptables -t #{table} -D #{data['chain']} 1' (noop)")
+                  debug("Would have run [delete]: 'iptables -t #{table} -D #{data['chain']} 1' (noop)")
                   next
                 else
-                  debug("Running 'iptables -t #{table} -D #{data['chain']} 1'")
+                  debug("Running [delete]: 'iptables -t #{table} -D #{data['chain']} 1'")
                   `#{@@iptables_dir}/iptables -t #{table} -D #{data['chain']} 1`
                 end
               }
             end
           }
+          # Run iptables save to persist rules. The behaviour is to do nothing
+          # if we no nothing of the operating system.
+          persist_cmd = case Facter.value(:operatingsystem).downcase
+            when "fedora", "redhat", "centos"
+              then "/sbin/service iptables save"
+            when "ubuntu", "debian"
+              then "/sbin/iptables-save > /etc/iptables.rules"
+            when "gentoo"
+              then "/etc/init.d/iptables save"
+            else nil
+          end
+
+          if persist_cmd != nil
+            if Puppet[:noop]
+              debug("Would have run [save]: #{persist_cmd} (noop)")
+            else
+              debug("Running [save]: #{persist_cmd}")
+              system(persist_cmd)
+            end
+          else
+            err("No save method known for your OS. Rules will not be saved!")
+          end
         end
 
         @@rules = {}
@@ -439,9 +504,13 @@ module Puppet
         rules_to_set = @@rules[table]
         current_table_rules = @@current_rules[table]
         current_table_rules = {} unless current_table_rules
+        current_table_rules.each do |rule, data|
+          debug("Current tables rules: #{rule}")
+        end
         if rules_to_set
           rules_to_set.each { |rule_to_set|
-            return true unless current_table_rules[rule_to_set['numbered rule']] or current_table_rules[rule_to_set['altned rule']]
+            debug("Looking for: #{rule_to_set['nrule']}")
+            return true unless current_table_rules[rule_to_set['nrule']]
           }
         end
       }
@@ -463,12 +532,9 @@ module Puppet
         if rules_to_set
           if current_table_rules
             rules_to_set.each { |rule_to_set|
-              full_rule = rule_to_set['full rule']
-              alt_rule  = rule_to_set['alt rule']
-              if    current_table_rules[full_rule]
-                current_table_rules[full_rule]['keep'] = 'me'
-              elsif current_table_rules[alt_rule]
-                current_table_rules[alt_rule]['keep']  = 'me'
+              rule = rule_to_set['rule']
+              if current_table_rules[rule]
+                current_table_rules[rule]['keep'] = 'me'
               end
             }
           end
@@ -480,10 +546,10 @@ module Puppet
             if data['keep']
             else
               if self.noop
-                debug("Would have run 'iptables -t #{table} #{rule.sub('-A', '-D')}' (noop)")
+                debug("Would have run [delete]: 'iptables -t #{table} #{rule.sub('-A', '-D')}' (noop)")
                 next
               else
-                debug("Running 'iptables -t #{table} #{rule.sub('-A', '-D')}'")
+                debug("Running [delete]: 'iptables -t #{table} #{rule.sub('-A', '-D')}'")
                 `#{@@iptables_dir}/iptables -t #{table} #{rule.sub("-A", "-D")}`
               end
               deleted += 1
@@ -494,7 +560,7 @@ module Puppet
       return deleted
     end
 
-    def evaluate
+    def properties
       @@ordered_rules[self.name] = @@instance_count
       @@instance_count += 1
 
@@ -547,7 +613,8 @@ module Puppet
       table = value(:table).to_s
       @@rules[table] = [] unless @@rules[table]
 
-      full_string = ""
+      # Create a Hash with all available params defaulted to empty strings.
+      strings = self.class.allattrs.inject({}) { |x,y| x[y] = ""; x }
 
       if value(:table).to_s == "filter" and ["PREROUTING", "POSTROUTING"].include?(value(:chain).to_s)
         invalidrule = true
@@ -559,23 +626,40 @@ module Puppet
         invalidrule = true
         err("INPUT, FORWARD and POSTROUTING cannot be used in table 'raw'. Ignoring rule.")
       else
-        full_string += "-A " + value(:chain).to_s
+        strings[:table] = "-A " + value(:chain).to_s
       end
 
-      source = value(:source).to_s
-      if source != ""
-        ip = IpCidr.new(source)
-        if @@usecidr
-          source = ip.cidr
-        else
-          source = ip.to_s
-          source += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
-        end
-        full_string += " -s " + source
+      sources = []
+      if value(:source).to_s != ""
+        value(:source).each { |source|
+          if source !~ /\//
+            source = Resolv.getaddress(source)
+          end
+          ip = IpCidr.new(source.to_s)
+          if @@usecidr
+            source = ip.cidr
+          else
+            source = ip.to_s
+            source += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
+          end
+          sources.push({
+            :host   => source,
+            :string => " -s " + source
+          })
+        }
+      else
+        # Used later for a single iteration of the rule if there are no sources.
+        sources.push({
+          :host   => "",
+          :string => ""
+        })
       end
 
       destination = value(:destination).to_s
       if destination != ""
+        if destination !~ /\//
+          destination = Resolv.getaddress(destination)
+        end
         ip = IpCidr.new(destination)
         if @@usecidr
           destination = ip.cidr
@@ -583,68 +667,63 @@ module Puppet
           destination = ip.to_s
           destination += sprintf("/%s", ip.netmask) unless ip.prefixlen == 32
         end
-        full_string += " -d " + destination
+        strings[:destination] = " -d " + destination
       end
 
       if value(:iniface).to_s != ""
         if ["INPUT", "FORWARD", "PREROUTING"].include?(value(:chain).to_s)
-          full_string += " -i " + value(:iniface).to_s
+          strings[:iniface] = " -i " + value(:iniface).to_s
         else
           invalidrule = true
           err("--in-interface only applies to INPUT/FORWARD/PREROUTING. Ignoring rule.")
         end
       end
+
       if value(:outiface).to_s != ""
         if ["OUTPUT", "FORWARD", "POSTROUTING"].include?(value(:chain).to_s)
-          full_string += " -o " + value(:outiface).to_s
+          strings[:outiface] = " -o " + value(:outiface).to_s
         else
           invalidrule = true
           err("--out-interface only applies to OUTPUT/FORWARD/POSTROUTING. Ignoring rule.")
         end
       end
 
-      alt_string  = full_string
-
       if value(:proto).to_s != "all"
-        alt_string  += " -p " + value(:proto).to_s
-        full_string += " -p " + value(:proto).to_s
+        strings[:proto] = " -p " + value(:proto).to_s
         if not ["vrrp", "igmp"].include?(value(:proto).to_s)
-          alt_string += " -m " + value(:proto).to_s
+          strings[:proto] += " -m " + value(:proto).to_s
         end
       end
 
       if value(:dport).to_s != ""
         if ["tcp", "udp"].include?(value(:proto).to_s)
-          if value(:dport).class.to_s == "Array"
+          if value(:dport).is_a?(Array)
             if value(:dport).length <= 15
-              full_string += " -m multiport --dports " + value(:dport).join(",")
-              alt_string += " -m multiport --dports " + value(:dport).join(",")
+              strings[:dport] = " -m multiport --dports " + value(:dport).join(",")
             else
               invalidrule = true
               err("multiport module only accepts <= 15 ports. Ignoring rule.")
             end
           else
-            full_string += " --dport " + value(:dport).to_s
-            alt_string  += " --dport " + value(:dport).to_s
+            strings[:dport] = " --dport " + value(:dport).to_s
           end
         else
           invalidrule = true
           err("--destination-port only applies to tcp/udp. Ignoring rule.")
         end
       end
+
       if value(:sport).to_s != ""
         if ["tcp", "udp"].include?(value(:proto).to_s)
-          if value(:sport).class.to_s == "Array"
+          if value(:sport).is_a?(Array)
             if value(:sport).length <= 15
-              full_string += " -m multiport --sports " + value(:sport).join(",")
-              alt_string += " -m multiport --sports " + value(:sport).join(",")
+              strings[:sport] = " -m multiport --sports " + value(:sport).join(",")
             else
               invalidrule = true
               err("multiport module only accepts <= 15 ports. Ignoring rule.")
             end
           else
-            full_string += " --sport " + value(:sport).to_s
-            alt_string  += " --sport " + value(:sport).to_s
+            strings[:sport] = " --sport " + value(:sport).to_s
           end
         else
           invalidrule = true
@@ -652,19 +731,48 @@ module Puppet
         end
       end
 
-      if value(:icmp).to_s != ""
-        if value(:proto).to_s != "icmp"
-          invalidrule = true
-          err("--icmp-type only applies to icmp. Ignoring rule.")
+      value_icmp = ""
+      if value(:proto).to_s == "icmp"
+        if value(:icmp).to_s == ""
+          value_icmp = "any"
         else
-          full_string += " --icmp-type " + value(:icmp).to_s
-          alt_string += " --icmp-type " + value(:icmp).to_s
+          value_icmp = value(:icmp).to_s
+
+          # Translate the symbolic names for icmp packet types to
+          # numbers. Otherwise iptables-save saves the rules as numbers
+          # and we will always fail the comparison causing re-loads.
+          unless value_icmp =~ /^\d{1,2}$/
+            value_icmp = case value_icmp
+              when "echo-reply" then "0"
+              when "destination-unreachable" then "3"
+              when "source-quence" then "4"
+              when "redirect" then "6"
+              when "echo-request" then "8"
+              when "router-advertisement" then "9"
+              when "router-solicitation" then "10"
+              when "time-exceeded" then "11"
+              when "parameter-problem" then "12"
+              when "timestamp-request" then "13"
+              when "timestamp-reply" then "14"
+              when "address-mask-request" then "17"
+              when "address-mask-reply" then "18"
+              else ""
+            end
+          end
+
+          if value_icmp == ""
+            invalidrule = true
+            err("Value for 'icmp' is invalid/unknown. Ignoring rule.")
+          end
+
         end
+
+        strings[:icmp] = " --icmp-type " + value_icmp
       end
 
       # let's specify the order of the states as iptables uses them
       state_order = ["INVALID", "NEW", "RELATED", "ESTABLISHED"]
-      if value(:state).class.to_s == "Array"
+      if value(:state).is_a?(Array)
 
         invalid_state = false
         value(:state).each {|v|
@@ -678,20 +786,22 @@ module Puppet
           # in the same order as the 'state_order' array
           states = state_order & value(:state)
 
-          full_string += " -m state --state " + states.join(",")
-          alt_string  += " -m state --state " + states.join(",")
+          strings[:state] = " -m state --state " + states.join(",")
         else
           invalidrule = true
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
         end
       elsif value(:state).to_s != ""
-        if state_order.include?(value(:state))
-          full_string += " -m state --state " + value(:state).to_s
-          alt_string  += " -m state --state " + value(:state).to_s
+        if state_order.include?(value(:state).to_s)
+          strings[:state] = " -m state --state " + value(:state).to_s
         else
           invalidrule = true
           err("'state' accepts any the following states: #{state_order.join(", ")}. Ignoring rule.")
         end
+      end
+
+      if value(:name).to_s != ""
+        strings[:comment] = " -m comment --comment \"" + value(:name).to_s + "\""
       end
 
       if value(:limit).to_s != ""
@@ -705,8 +815,7 @@ module Puppet
             invalidrule = true
             err("'limit' values must be numeric. Ignoring rule.")
           elsif ["sec", "min", "hour", "day"].include? limit_value[1]
-            full_string += " -m limit --limit " + value(:limit).to_s
-            alt_string += " -m limit --limit " + value(:limit).to_s
+            strings[:limit] = " -m limit --limit " + value(:limit).to_s
           else
             invalidrule = true
             err("Please use only sec/min/hour/day suffixes with 'limit'. Ignoring rule.")
@@ -722,14 +831,13 @@ module Puppet
           invalidrule = true
           err("'burst' accepts only numeric values. Ignoring rule.")
         else
-          full_string += " --limit-burst " + value(:burst).to_s
-          alt_string += " --limit-burst " + value(:burst).to_s
+          strings[:burst] = " --limit-burst " + value(:burst).to_s
         end
       end
 
-      full_string += " -j " + value(:jump).to_s
-      alt_string += " -j " + value(:jump).to_s
+      strings[:jump] = " -j " + value(:jump).to_s
 
+      value_reject = ""
       if value(:jump).to_s == "DNAT"
         if value(:table).to_s != "nat"
           invalidrule = true
@@ -738,24 +846,37 @@ module Puppet
           invalidrule = true
           err("DNAT missing mandatory 'todest' parameter.")
         else
-          full_string += " --to-destination " + value(:todest).to_s
-          alt_string += " --to-destination " + value(:todest).to_s
+          strings[:todest] = " --to-destination " + value(:todest).to_s
+        end
+      elsif value(:jump).to_s == "SNAT"
+        if value(:table).to_s != "nat"
+          invalidrule = true
+          err("SNAT only applies to table 'nat'.")
+        elsif value(:tosource).to_s == ""
+          invalidrule = true
+          err("SNAT missing mandatory 'tosource' parameter.")
+        else
+          strings[:tosource] = " --to-source " + value(:tosource).to_s
+        end
+      elsif value(:jump).to_s == "REDIRECT"
+        if value(:toports).to_s == ""
+          invalidrule = true
+          err("REDIRECT missing mandatory 'toports' parameter.")
+        else
+          strings[:toports] = " --to-ports " + value(:toports).to_s
         end
       elsif value(:jump).to_s == "REJECT"
-        if value(:reject).to_s != ""
-          full_string += " --reject-with " + value(:reject).to_s
-          alt_string += " --reject-with " + value(:reject).to_s
-        end
+        # Apply the default rejection type if none is specified.
+        value_reject = value(:reject).to_s != "" ? value(:reject).to_s : "icmp-port-unreachable"
+        strings[:reject] = " --reject-with " + value_reject
       elsif value(:jump).to_s == "LOG"
         if value(:log_level).to_s != ""
-          full_string += " --log-level " + value(:log_level).to_s
-          alt_string += " --log-level " + value(:log_level).to_s
+          strings[:log_level] = " --log-level " + value(:log_level).to_s
         end
         if value(:log_prefix).to_s != ""
           # --log-prefix has a 29 characters limitation.
           log_prefix = "\"" + value(:log_prefix).to_s[0,27] + ": \""
-          full_string += " --log-prefix " + log_prefix
-          alt_string += " --log-prefix " + log_prefix
+          strings[:log_prefix] = " --log-prefix " + log_prefix
         end
       elsif value(:jump).to_s == "MASQUERADE"
         if value(:table).to_s != "nat"
@@ -764,41 +885,70 @@ module Puppet
         end
       elsif value(:jump).to_s == "REDIRECT"
         if value(:redirect).to_s != ""
-          full_string += " --to-ports " + value(:redirect).to_s
-          alt_string += " --to-ports " + value(:redirect).to_s
+          strings[:redirect] = " --to-ports " + value(:redirect).to_s
         end
       end
 
       chain_prio = @@chain_order[value(:chain).to_s]
 
-      debug("iptables param: #{full_string}")
-
-      if invalidrule != true
-        @@rules[table].
-          push({ 'name'          => value(:name).to_s,
-                 'chain'         => value(:chain).to_s,
-                 'table'         => value(:table).to_s,
-                 'proto'         => value(:proto).to_s,
-                 'jump'          => value(:jump).to_s,
-                 'source'        => value(:source).to_s,
-                 'destination'   => value(:destination).to_s,
-                 'sport'         => value(:sport).to_s,
-                 'dport'         => value(:dport).to_s,
-                 'iniface'       => value(:iniface).to_s,
-                 'outiface'      => value(:outiface).to_s,
-                 'todest'        => value(:todest).to_s,
-                 'reject'        => value(:reject).to_s,
-                 'redirect'      => value(:redirect).to_s,
-                 'log_level'     => value(:log_level).to_s,
-                 'log_prefix'    => value(:log_prefix).to_s,
-                 'icmp'          => value(:icmp).to_s,
-                 'state'         => value(:state).to_s,
-                 'limit'         => value(:limit).to_s,
-                 'burst'         => value(:burst).to_s,
-                 'chain_prio'    => chain_prio.to_s,
-                 'full rule'     => full_string,
-                 'alt rule'      => alt_string})
-      end
+      # Generate a rule entry for each source permutation.
+      sources.each { |source|
+        
+        # Build a string of arguments in the required order.
+        rule_string = "%s" * 21 % [
+          strings[:table],
+          source[:string],
+          strings[:destination],
+          strings[:iniface],
+          strings[:outiface],
+          strings[:proto],
+          strings[:sport],
+          strings[:dport],
+          strings[:icmp],
+          strings[:state],
+          strings[:comment],
+          strings[:limit],
+          strings[:burst],
+          strings[:jump],
+          strings[:todest],
+          strings[:tosource],
+          strings[:toports],
+          strings[:reject],
+          strings[:log_level],
+          strings[:log_prefix],
+          strings[:redirect]
+        ]
+        
+        debug("iptables param: #{rule_string}")
+        if invalidrule != true
+          @@rules[table].push({
+            'name'          => value(:name).to_s,
+            'chain'         => value(:chain).to_s,
+            'table'         => value(:table).to_s,
+            'proto'         => value(:proto).to_s,
+            'jump'          => value(:jump).to_s,
+            'source'        => source[:host],
+            'destination'   => value(:destination).to_s,
+            'sport'         => value(:sport).to_s,
+            'dport'         => value(:dport).to_s,
+            'iniface'       => value(:iniface).to_s,
+            'outiface'      => value(:outiface).to_s,
+            'todest'        => value(:todest).to_s,
+            'tosource'      => value(:tosource).to_s,
+            'toports'       => value(:toports).to_s,
+            'reject'        => value_reject,
+            'redirect'      => value(:redirect).to_s,
+            'log_level'     => value(:log_level).to_s,
+            'log_prefix'    => value(:log_prefix).to_s,
+            'icmp'          => value_icmp,
+            'state'         => value(:state).to_s,
+            'limit'         => value(:limit).to_s,
+            'burst'         => value(:burst).to_s,
+            'chain_prio'    => chain_prio.to_s,
+            'rule'          => rule_string
+          })
+        end
+      }
     end
   end
 end

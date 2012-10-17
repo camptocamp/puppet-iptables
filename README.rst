@@ -2,13 +2,8 @@
 Puppet iptables type
 ====================
 
-This is a copy of Dmitri Priimak's "iptables type" (downloaded from
-http://www.stanford.edu/~priimak/soft/puppet/iptables/index.html), and modified
-for my needs. It is work in progress and certainly has some bugs. Feedback
-welcome !
-
 This is a simple wrapper around the "iptables" command used on Linux. It is
-ment to be used to define half a dozen rule on the host running puppet. For
+meant to be used to define half a dozen rules on the host running puppet. For
 more serious needs, you might want to have a look at this `shorewall module`_
 for puppet.
 
@@ -44,11 +39,6 @@ Usage
 
 Example::
 
-  Iptables {
-    before => Exec["save iptables rules"],
-    notify => Exec["save iptables rules"],
-  }
-
   iptables { "001 allow icmp":
     proto => "icmp",
     icmp  => "any",
@@ -67,10 +57,6 @@ Example::
     jump        => "DROP",
   }
 
-  exec { "save iptables rules":
-    command     => "/etc/init.d/iptables save",
-    refreshonly => true,
-  }
 
   file { "/etc/puppet/iptables/pre.iptables":
     content => "-A INPUT -s 10.0.0.1 -p tcp -m tcp --dport 22 -j ACCEPT",
@@ -91,27 +77,24 @@ This will run the following commands, in this exact order::
   iptables -t filter -A INPUT -s 192.168.0.0/16 -d 192.168.1.11/32 -p tcp --dport 80 -j ACCEPT
   iptables -t filter -A INPUT -p tcp --dport 80 -j DROP
   iptables -t filter -A INPUT -j REJECT --reject-with icmp-port-unreachable
-  /etc/init.d/iptables save
 
 Reference
 ---------
 
-Have a look at plugins/puppet/type/iptables.rb for the complete list of
+Have a look at lib/puppet/type/iptables.rb for the complete list of
 parameters.
 
 
 Installation
 ------------
 
-Clone this git repository in your $modulepath on the puppetmaster, then ensure
-you have the following in your puppet.conf, both on the client and the server
-side::
+If you are using standard path locations, then just clone this git repository in your $modulepath on the puppetmaster, for example::
 
-  [main]
-    libdir = /var/lib/puppet/lib
+  cd /etc/puppet/modules
+  git clone git://github.com/bobsh/puppet-iptables.git iptables
 
-  [puppetd]
-    pluginsync=true
-    plugindest=/var/lib/puppet/lib
+Also ensure you have the following in your puppet.conf on the client and master side::
 
+  [agent]
+  pluginsync=true
 
