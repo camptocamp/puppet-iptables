@@ -70,7 +70,7 @@ module Puppet
                   Possible values are: 'tcp', 'udp', 'icmp', 'esp', 'ah', 'vrrp', 'igmp', 'all'.
                   Default value is 'tcp'"
       newvalues(:tcp, :udp, :icmp, :esp, :ah, :vrrp, :igmp, :all)
-      defaultto "tcp"
+      defaultto "all"
     end
 
     newparam(:jump) do
