@@ -353,7 +353,7 @@ module Puppet
       nil
     end
 
-    # Load a file and using the passed in rules hash load the 
+    # Load a file and using the passed in rules hash load the
     # rules contained therein.
     def load_rules_from_file(rules, file_name, action)
       if File.exist?(file_name)
@@ -459,7 +459,13 @@ module Puppet
           # Run iptables save to persist rules. The behaviour is to do nothing
           # if we no nothing of the operating system.
           persist_cmd = case Facter.value(:operatingsystem).downcase
-            when "fedora", "redhat", "centos"
+            when "fedora"
+              if Facter.value(:operatingsystemrelease).to_i > 15
+                "/sbin/iptables-save > /etc/sysconfig/iptables"
+              else
+                "/sbin/service iptables save"
+              end
+            when "redhat", "centos"
               then "/sbin/service iptables save"
             when "ubuntu", "debian"
               then "/sbin/iptables-save > /etc/iptables.rules"
@@ -893,7 +899,7 @@ module Puppet
 
       # Generate a rule entry for each source permutation.
       sources.each { |source|
-        
+
         # Build a string of arguments in the required order.
         rule_string = "%s" * 21 % [
           strings[:table],
@@ -918,7 +924,7 @@ module Puppet
           strings[:log_prefix],
           strings[:redirect]
         ]
-        
+
         debug("iptables param: #{rule_string}")
         if invalidrule != true
           @@rules[table].push({
