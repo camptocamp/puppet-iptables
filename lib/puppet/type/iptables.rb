@@ -637,7 +637,7 @@ module Puppet
 
       sources = []
       if value(:source).to_s != ""
-        value(:source).each { |source|
+        [value(:source)].flatten.each { |source|
           if source !~ /\//
             source = Resolv.getaddress(source)
           end
