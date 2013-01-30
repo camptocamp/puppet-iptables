@@ -189,7 +189,7 @@ module Puppet
       table_rules   = {}
       counter       = 1
 
-      `#{@@iptables_dir}/iptables-save`.each { |l|
+      `#{@@iptables_dir}/iptables-save`.each_line { |l|
         if /^\*\S+/.match(l)
           # Matched table
           table = self.matched(l.scan(/^\*(\S+)/))
