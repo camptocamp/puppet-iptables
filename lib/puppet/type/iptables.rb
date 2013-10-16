@@ -424,7 +424,7 @@ module Puppet
       # current rules, we add all new ones and remove all old ones.
       if self.rules_are_different
         # load new new rules
-        benchmark(:notice, self.noop ? "rules would have changed... (noop)" : "rules have changed...") do
+        benchmark(:warning, self.noop ? "rules would have changed... (noop)" : "rules have changed...") do
           # load new rules
           @@table_counters.each { |table, total_do_delete|
             rules_to_set = @@rules[table]
