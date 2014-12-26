@@ -1,25 +1,14 @@
-require 'find'
+require 'puppetlabs_spec_helper/rake_tasks'
+require 'puppet-lint/tasks/puppet-lint'
 
-desc "Run puppet tests."
-task :test, :path do |t, args|
-  args.with_defaults(:path => ".")
+PuppetLint.configuration.fail_on_warnings
+PuppetLint.configuration.send('relative')
+PuppetLint.configuration.send('disable_80chars')
+PuppetLint.configuration.ignore_paths = ["spec/**/*.pp", "pkg/**/*.pp", "vendor/**/*.pp"]
 
-  paths = []
+PuppetSyntax.exclude_paths = ["spec/fixtures/**/*.pp", "vendor/**/*"]
 
-  Find.find(args.path) do |path|
-    if path =~ /tests\/\d+.+\.pp/
-      paths << path
-    end
-  end
-
-  paths.sort.each do |path|
-    print("Processing " + path + ": ")
-    result = `puppet --noop --modulepath=. #{path} 2>&1`
-    if $?.exitstatus == 0
-      puts("\tSuccess")
-    else
-      puts("\tFailed")
-      puts(result)
-    end
-  end
+desc "Lint metadata.json file"
+task :metadata do
+  sh "metadata-json-lint metadata.json"
 end
