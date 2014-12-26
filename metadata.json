@@ -1,0 +1,58 @@
+{
+  "name": "camptocamp-iptables",
+  "version": "1.0.0",
+  "author": "Camptocamp",
+  "summary": "Puppet Iptables module",
+  "license": "Apache 2.0",
+  "source": "https://github.com/camptocamp/puppet-iptables",
+  "project_page": "https://github.com/camptocamp/puppet-iptables",
+  "issues_url": "https://github.com/camptocamp/puppet-iptables/issues",
+  "dependencies": [
+    {
+      "name": "camptocamp/selinux",
+      "version_requirement": ">=0.1.0 <1.0.0"
+    },
+    {
+      "name": "puppetlabs/concat",
+      "version_requirement": ">=1.0.0 <2.0.0"
+    },
+    {
+      "name": "puppetlabs/stdlib",
+      "version_requirement": ">=3.2.0 <5.0.0"
+    }
+  ],
+  "requirements": [
+    {
+      "name": "puppet",
+      "version_requirement": "3.x"
+    }
+  ],
+  "operatingsystem_support": [
+    {
+      "operatingsystem": "Debian",
+      "operatingsystemrelease": [
+        "6",
+        "7"
+      ]
+    },
+    {
+      "operatingsystem": "Ubuntu",
+      "operatingsystemrelease": [
+        "10.04",
+        "12.04",
+        "14.04"
+      ]
+    },
+    {
+      "operatingsystem": "RedHat",
+      "operatingsystemrelease": [
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  ],
+  "puppet_version": [
+    "3.7"
+  ]
+}
