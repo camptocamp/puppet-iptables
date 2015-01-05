@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "author": "Camptocamp",
   "summary": "Puppet Iptables module",
-  "license": "Apache 2.0",
+  "license": "Apache-2.0",
   "source": "https://github.com/camptocamp/puppet-iptables",
   "project_page": "https://github.com/camptocamp/puppet-iptables",
   "issues_url": "https://github.com/camptocamp/puppet-iptables/issues",
